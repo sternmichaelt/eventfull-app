@@ -1,0 +1,1696 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { Plus, ZoomIn, ZoomOut, Calendar, Heart, GraduationCap, Briefcase, Baby, Star, X, Camera, ChevronLeft, ChevronRight, Images, BookOpen } from 'lucide-react';
+// Optional AI import (safe to remove)
+import { classifyPhotos } from './ai/PhotoClassifier';
+
+// [Then all your EventFull component code...]
+
+const DEFAULT_BACKGROUNDS = [
+  {
+    id: 'bg-mountains',
+    name: 'Calm Mountains',
+    url: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?q=80&w=1600&auto=format&fit=crop'
+  },
+  {
+    id: 'bg-sky',
+    name: 'Soft Sky',
+    url: 'https://images.unsplash.com/photo-1496307042754-b4aa456c4a2d?q=80&w=1600&auto=format&fit=crop'
+  },
+  {
+    id: 'bg-abstract',
+    name: 'Gentle Abstract',
+    url: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=1600&auto=format&fit=crop'
+  }
+];
+
+function BackgroundModal({ current, onSelect, onClear, onClose }) {
+  const [uploadPreview, setUploadPreview] = useState(null);
+  const [uploadError, setUploadError] = useState('');
+  const fileInputRef = useRef(null);
+
+  const handleUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      setUploadError('Please select an image file (JPG, PNG, WebP)');
+      return;
+    }
+
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      setUploadError('File too large. Please select an image under 10MB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        // Check dimensions
+        const { width, height } = img;
+        const aspectRatio = width / height;
+        
+        let guidance = '';
+        if (width < 1200 || height < 800) {
+          guidance = `Image is ${width}×${height}. For best results, use at least 1920×1080.`;
+        } else if (aspectRatio < 1.5 || aspectRatio > 2.5) {
+          guidance = `Aspect ratio is ${aspectRatio.toFixed(1)}:1. Landscape images (1.5:1 to 2.5:1) work best.`;
+        }
+
+        setUploadPreview({
+          url: e.target.result,
+          width,
+          height,
+          guidance
+        });
+        setUploadError('');
+      };
+      img.onerror = () => {
+        setUploadError('Unable to load image. Please try another file.');
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const applyUpload = () => {
+    if (uploadPreview) {
+      onSelect(uploadPreview.url);
+      onClose();
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl overflow-hidden">
+        <div className="flex items-center justify-between p-4 border-b">
+          <h3 className="text-xl font-bold text-gray-900">Choose Background</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="p-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {DEFAULT_BACKGROUNDS.map(bg => (
+              <button key={bg.id} type="button" onClick={() => onSelect(bg.url)} className={`border rounded overflow-hidden text-left ${current===bg.url? 'ring-2 ring-blue-500' : ''}`}>
+                <div className="w-full h-32 bg-gray-100 overflow-hidden">
+                  <img src={bg.url} alt={bg.name} className="w-full h-full object-cover" />
+                </div>
+                <div className="px-3 py-2 text-sm text-gray-800">{bg.name}</div>
+              </button>
+            ))}
+          </div>
+
+          {/* Upload Section */}
+          <div className="mt-6 border-t pt-4">
+            <h4 className="text-lg font-semibold text-gray-900 mb-3">Upload Your Own</h4>
+            
+            {/* Upload Guidelines */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+              <div className="text-sm text-blue-800">
+                <div className="font-medium mb-2">📋 Upload Guidelines:</div>
+                <ul className="space-y-1 text-xs">
+                  <li>• <strong>Format:</strong> JPG, PNG, or WebP</li>
+                  <li>• <strong>Size:</strong> Under 10MB</li>
+                  <li>• <strong>Dimensions:</strong> At least 1920×1080 (16:9 ratio works best)</li>
+                  <li>• <strong>Style:</strong> Subtle, not too busy - it will be dimmed in the app</li>
+                </ul>
+              </div>
+            </div>
+
+            {/* Upload Area */}
+            <div className="space-y-3">
+              <div 
+                onClick={() => fileInputRef.current?.click()}
+                className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-blue-400 transition-colors"
+              >
+                {uploadPreview ? (
+                  <div className="space-y-3">
+                    <div className="relative inline-block">
+                      <img 
+                        src={uploadPreview.url} 
+                        alt="Preview" 
+                        className="max-h-48 max-w-full rounded shadow-sm"
+                      />
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      {uploadPreview.width} × {uploadPreview.height}
+                    </div>
+                    {uploadPreview.guidance && (
+                      <div className="text-xs text-amber-600 bg-amber-50 p-2 rounded">
+                        💡 {uploadPreview.guidance}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <div className="text-gray-400 mb-2">
+                      <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                      </svg>
+                    </div>
+                    <p className="text-sm text-gray-600">Click to upload an image</p>
+                    <p className="text-xs text-gray-400 mt-1">or drag and drop</p>
+                  </div>
+                )}
+              </div>
+              
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={handleUpload}
+                className="hidden"
+              />
+
+              {uploadError && (
+                <div className="text-sm text-red-600 bg-red-50 p-2 rounded">
+                  ❌ {uploadError}
+                </div>
+              )}
+
+              {uploadPreview && (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={applyUpload}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Use This Background
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUploadPreview(null);
+                      setUploadError('');
+                      if (fileInputRef.current) fileInputRef.current.value = '';
+                    }}
+                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Choose Different
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-4 mt-6 border-t">
+            <button
+              type="button"
+              onClick={onClear}
+              className="px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors"
+            >
+              No Background
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Sample life events data
+const sampleEvents = [
+  {
+    id: 1,
+    title: "Born",
+    description: "The beginning of my journey",
+    date: new Date("1990-03-15"),
+    category: "milestone",
+    importance: 10,
+    image: null,
+    images: [],
+    journals: []
+  },
+  {
+    id: 2,
+    title: "First Day of School",
+    description: "Started kindergarten at Sunny Elementary",
+    date: new Date("1995-09-05"),
+    category: "education",
+    importance: 7,
+    image: null,
+    images: [],
+    journals: []
+  },
+  {
+    id: 3,
+    title: "10th Birthday",
+    description: "Double digits! Had a amazing party with friends",
+    date: new Date("2000-03-15"),
+    category: "birthday",
+    importance: 6,
+    image: null,
+    images: [],
+    journals: []
+  },
+  {
+    id: 4,
+    title: "Got Driver's License",
+    description: "Freedom! Passed on the first try",
+    date: new Date("2006-08-20"),
+    category: "milestone",
+    importance: 8,
+    image: null,
+    images: [],
+    journals: []
+  },
+  {
+    id: 5,
+    title: "High School Graduation",
+    description: "Graduated valedictorian from Central High",
+    date: new Date("2008-06-15"),
+    category: "education",
+    importance: 9,
+    image: null,
+    images: [],
+    journals: []
+  },
+  {
+    id: 6,
+    title: "Started College",
+    description: "Began Computer Science at State University",
+    date: new Date("2008-08-25"),
+    category: "education",
+    importance: 8,
+    image: null,
+    images: [],
+    journals: []
+  },
+  {
+    id: 7,
+    title: "21st Birthday",
+    description: "Legal! Celebrated with family and friends",
+    date: new Date("2011-03-15"),
+    category: "birthday",
+    importance: 7,
+    image: null,
+    images: [],
+    journals: []
+  },
+  {
+    id: 8,
+    title: "College Graduation",
+    description: "Bachelor's in Computer Science, Summa Cum Laude",
+    date: new Date("2012-05-20"),
+    category: "education",
+    importance: 9,
+    image: null,
+    images: [],
+    journals: []
+  },
+  {
+    id: 9,
+    title: "First Job",
+    description: "Software Engineer at TechCorp",
+    date: new Date("2012-07-01"),
+    category: "career",
+    importance: 8,
+    image: null,
+    images: [],
+    journals: []
+  },
+  {
+    id: 10,
+    title: "Met My Partner",
+    description: "Met the love of my life at a coffee shop",
+    date: new Date("2014-11-12"),
+    category: "relationship",
+    importance: 10,
+    image: null,
+    images: [],
+    journals: []
+  },
+  {
+    id: 11,
+    title: "Got Engaged",
+    description: "Said yes to the perfect proposal!",
+    date: new Date("2017-02-14"),
+    category: "relationship",
+    importance: 10,
+    image: null,
+    images: [],
+    journals: []
+  },
+  {
+    id: 12,
+    title: "Wedding Day",
+    description: "The most magical day of our lives",
+    date: new Date("2018-06-23"),
+    category: "relationship",
+    importance: 10,
+    image: null,
+    images: [],
+    journals: []
+  },
+  {
+    id: 13,
+    title: "30th Birthday",
+    description: "Three decades of amazing memories",
+    date: new Date("2020-03-15"),
+    category: "birthday",
+    importance: 8,
+    image: null,
+    images: [],
+    journals: []
+  },
+  {
+    id: 14,
+    title: "Started My Own Business",
+    description: "Launched EventFull - my dream project",
+    date: new Date("2021-04-01"),
+    category: "career",
+    importance: 9,
+    image: null,
+    images: [],
+    journals: []
+  },
+  {
+    id: 15,
+    title: "First Child Born",
+    description: "Welcome to the world, little one!",
+    date: new Date("2022-09-08"),
+    category: "family",
+    importance: 10,
+    image: null,
+    images: [],
+    journals: []
+  }
+];
+
+// Category configurations
+const categoryConfig = {
+  milestone: { color: 'bg-red-500', icon: Star, label: 'Milestone' },
+  education: { color: 'bg-blue-500', icon: GraduationCap, label: 'Education' },
+  career: { color: 'bg-green-500', icon: Briefcase, label: 'Career' },
+  relationship: { color: 'bg-pink-500', icon: Heart, label: 'Relationship' },
+  birthday: { color: 'bg-purple-500', icon: Calendar, label: 'Birthday' },
+  family: { color: 'bg-orange-500', icon: Baby, label: 'Family' }
+};
+
+function EventGallery({ event, startIndex = 0, onClose }) {
+  const [index, setIndex] = useState(startIndex);
+  if (!event) return null;
+  const gallery = [
+    ...(event.image ? [{ id: 'main', url: event.image, name: event.title || 'Image', tags: [event.category] }] : []),
+    ...(event.images || [])
+  ];
+  const goPrev = () => setIndex((i) => (i - 1 + gallery.length) % gallery.length);
+  const goNext = () => setIndex((i) => (i + 1) % gallery.length);
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl overflow-hidden">
+        <div className="flex items-center justify-between p-4 border-b">
+          <h3 className="text-lg font-semibold text-gray-900">{event.title} — Photos</h3>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="p-4 flex items-center gap-4">
+          <button onClick={goPrev} className="p-2 rounded hover:bg-gray-100"><ChevronLeft className="w-5 h-5" /></button>
+          <div className="flex-1">
+            <div className="w-full h-[420px] bg-gray-100 rounded flex items-center justify-center overflow-hidden">
+              {gallery[index]?.url && (
+                <img src={gallery[index].url} alt={gallery[index].name || 'Photo'} className="max-h-full max-w-full object-contain" />
+              )}
+            </div>
+            <div className="mt-2 text-center text-sm text-gray-600">
+              {gallery[index]?.name || 'Photo'}
+            </div>
+          </div>
+          <button onClick={goNext} className="p-2 rounded hover:bg-gray-100"><ChevronRight className="w-5 h-5" /></button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AllPhotosModal({ events, selectedCategories, onClose, onToggleCategory, onSelectAll }) {
+  const allPhotos = events.flatMap((e) => {
+    const photos = [];
+    if (e.image) photos.push({ id: `${e.id}-main`, url: e.image, name: e.title || 'Image', eventId: e.id, category: e.category });
+    (e.images || []).forEach((img) => photos.push({ ...img, eventId: e.id, category: e.category }));
+    return photos;
+  }).filter(p => selectedCategories.has(p.category));
+
+  const [startIdx, setStartIdx] = useState(0);
+  const visible = allPhotos.slice(startIdx, startIdx + 3);
+  const canSlide = allPhotos.length > 3;
+
+  const slidePrev = () => {
+    if (!canSlide) return;
+    setStartIdx((idx) => (idx - 1 + allPhotos.length) % allPhotos.length);
+  };
+
+  const slideNext = () => {
+    if (!canSlide) return;
+    setStartIdx((idx) => (idx + 1) % allPhotos.length);
+  };
+
+  const [lightboxIdx, setLightboxIdx] = useState(null);
+  const openLightbox = (absoluteIdx) => setLightboxIdx(absoluteIdx);
+  const closeLightbox = () => setLightboxIdx(null);
+  const lbPrev = () => setLightboxIdx((i) => (i - 1 + allPhotos.length) % allPhotos.length);
+  const lbNext = () => setLightboxIdx((i) => (i + 1) % allPhotos.length);
+
+  // AI Assist state (optional)
+  const [showAI, setShowAI] = useState(false);
+  const [prompt, setPrompt] = useState('Group photos by the most likely matching event.');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [suggestions, setSuggestions] = useState([]);
+  const [applied, setApplied] = useState([]); // store applied suggestion ids for simple undo
+
+  const runAI = async () => {
+    setAiLoading(true);
+    try {
+      const evs = events.map(e => ({ id: e.id, title: e.title, date: e.date, category: e.category }));
+      const res = await classifyPhotos(allPhotos, evs, prompt);
+      setSuggestions(res.suggestions || []);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const applySuggestion = (s) => {
+    // Let parent keep data immutable; here we only annotate UI state.
+    setApplied((prev) => [...prev, `${s.photoId}->${s.toEventId}`]);
+  };
+
+  const undoSuggestion = (s) => {
+    setApplied((prev) => prev.filter(id => id !== `${s.photoId}->${s.toEventId}`));
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-screen-2xl overflow-hidden">
+        <div className="flex items-center justify-between p-4 border-b">
+          <div className="flex items-center gap-3">
+            <Images className="w-5 h-5 text-gray-700" />
+            <h3 className="text-lg font-semibold text-gray-900">Your Photos</h3>
+          </div>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="p-4">
+          <div className="flex flex-wrap gap-2 mb-4 items-start">
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={onSelectAll}
+                className="px-3 py-1 rounded-full border border-gray-300 bg-white text-sm text-gray-700 hover:bg-gray-50"
+                title="Select all categories"
+              >
+                Select All
+              </button>
+              {Object.entries(categoryConfig).map(([key, config]) => {
+                const active = selectedCategories.has(key);
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => onToggleCategory(key)}
+                    className={`px-3 py-1 rounded-full border text-sm ${active ? 'border-gray-300 bg-white' : 'border-gray-200 bg-gray-50 opacity-70'}`}
+                  >
+                    {config.label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="ml-auto flex items-center gap-2">
+              <button type="button" onClick={() => setShowAI(v => !v)} className="px-3 py-1.5 border rounded text-sm">
+                {showAI ? 'Hide AI Assist' : 'AI Assist'}
+              </button>
+            </div>
+          </div>
+
+          {showAI && (
+            <div className="mb-4 border rounded p-3 bg-gray-50">
+              <div className="text-sm font-medium text-gray-800 mb-2">AI Assist (Beta)</div>
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                <input
+                  type="text"
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  className="flex-1 min-w-[240px] px-3 py-2 border rounded text-sm"
+                  placeholder="Describe how to group photos..."
+                />
+                <button type="button" onClick={runAI} disabled={aiLoading} className="px-3 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
+                  {aiLoading ? 'Analyzing…' : 'Run'}
+                </button>
+              </div>
+              {suggestions.length > 0 ? (
+                <div className="max-h-48 overflow-auto">
+                  <table className="min-w-full text-xs">
+                    <thead>
+                      <tr className="text-left text-gray-600">
+                        <th className="px-2 py-1">Photo</th>
+                        <th className="px-2 py-1">From</th>
+                        <th className="px-2 py-1">To</th>
+                        <th className="px-2 py-1">Reason</th>
+                        <th className="px-2 py-1"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {suggestions.map((s) => {
+                        const key = `${s.photoId}->${s.toEventId}`;
+                        const isApplied = applied.includes(key);
+                        const fromEvent = events.find(e => e.id === s.fromEventId);
+                        const toEvent = events.find(e => e.id === s.toEventId);
+                        const photo = allPhotos.find(p => p.id === s.photoId);
+                        return (
+                          <tr key={key} className="align-top">
+                            <td className="px-2 py-1">
+                              <div className="flex items-center gap-2">
+                                <img src={photo?.url} alt={photo?.name} className="w-10 h-10 object-cover rounded" />
+                                <span className="truncate max-w-[120px]" title={photo?.name}>{photo?.name}</span>
+                              </div>
+                            </td>
+                            <td className="px-2 py-1 text-gray-700">{fromEvent?.title}</td>
+                            <td className="px-2 py-1 text-gray-900 font-medium">{toEvent?.title}</td>
+                            <td className="px-2 py-1 text-gray-600">{s.reason}</td>
+                            <td className="px-2 py-1">
+                              {isApplied ? (
+                                <button type="button" onClick={() => undoSuggestion(s)} className="px-2 py-1 border rounded text-xs">Undo</button>
+                              ) : (
+                                <button type="button" onClick={() => applySuggestion(s)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs">Apply</button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : aiLoading ? (
+                <div className="text-xs text-gray-600">Analyzing photos…</div>
+              ) : (
+                <div className="text-xs text-gray-600">No suggestions yet. Enter instructions and click Run.</div>
+              )}
+            </div>
+          )}
+
+          {allPhotos.length === 0 ? (
+            <div className="text-sm text-gray-600">No photos for the selected filters.</div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={slidePrev}
+                disabled={!canSlide}
+                className={`p-2 rounded border ${canSlide ? 'hover:bg-gray-50 border-gray-300' : 'opacity-40 cursor-not-allowed border-gray-200'}`}
+                title="Previous"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+
+              <div className="grid grid-cols-3 gap-3 flex-1">
+                {visible.map((p, i) => {
+                  const absoluteIndex = (startIdx + i) % allPhotos.length;
+                  return (
+                    <div key={p.id} className="bg-gray-100 rounded overflow-hidden cursor-pointer" onClick={() => openLightbox(absoluteIndex)}>
+                      <img src={p.url} alt={p.name} className="w-full h-56 object-cover" />
+                      <div className="p-2 text-xs text-gray-700">
+                        <div className="font-medium truncate" title={p.name}>{p.name}</div>
+                        <div className="text-gray-500">{categoryConfig[p.category]?.label || p.category}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <button
+                type="button"
+                onClick={slideNext}
+                disabled={!canSlide}
+                className={`p-2 rounded border ${canSlide ? 'hover:bg-gray-50 border-gray-300' : 'opacity-40 cursor-not-allowed border-gray-200'}`}
+                title="Next"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {lightboxIdx !== null && allPhotos[lightboxIdx] && (
+        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+          <button onClick={closeLightbox} className="absolute top-4 right-4 text-white hover:text-gray-200">
+            <X className="w-6 h-6" />
+          </button>
+          <button onClick={lbPrev} className="absolute left-4 text-white hover:text-gray-200 p-2"><ChevronLeft className="w-8 h-8" /></button>
+          <div className="max-w-5xl w-full">
+            <div className="w-full h-[70vh] bg-black flex items-center justify-center">
+              <img src={allPhotos[lightboxIdx].url} alt={allPhotos[lightboxIdx].name} className="max-h-full max-w-full object-contain" />
+            </div>
+            <div className="mt-3 text-center text-white text-sm">
+              {allPhotos[lightboxIdx].name}
+            </div>
+          </div>
+          <button onClick={lbNext} className="absolute right-4 text-white hover:text-gray-200 p-2"><ChevronRight className="w-8 h-8" /></button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AllJournalsModal({ events, selectedCategories, onClose, onToggleCategory, onSelectAll }) {
+  const allJournalsRaw = events.flatMap((e) => {
+    const entries = (e.journals || []).map((j) => ({ ...j, eventId: e.id, eventTitle: e.title, eventDate: e.date, category: e.category }));
+    return entries;
+  }).filter(j => selectedCategories.has(j.category));
+
+  const [sortBy, setSortBy] = useState('createdAt'); // 'createdAt' | 'eventDate' | 'title'
+  const [sortDir, setSortDir] = useState('desc'); // 'asc' | 'desc'
+  const [viewer, setViewer] = useState(null); // full entry object
+  const [viewerIndex, setViewerIndex] = useState(-1); // index within sorted list
+  const [search, setSearch] = useState('');
+
+  const filtered = allJournalsRaw.filter((j) => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return (
+      (j.title || '').toLowerCase().includes(q) ||
+      (j.content || '').toLowerCase().includes(q) ||
+      (j.eventTitle || '').toLowerCase().includes(q)
+    );
+  });
+
+  const sortedJournals = [...filtered].sort((a, b) => {
+    const dir = sortDir === 'asc' ? 1 : -1;
+    if (sortBy === 'title') {
+      return a.title.localeCompare(b.title) * dir;
+    }
+    if (sortBy === 'eventDate') {
+      return (new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime()) * dir;
+    }
+    // createdAt default
+    return (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) * dir;
+  });
+
+  const toggleSort = (key) => {
+    if (sortBy === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(key);
+      setSortDir('asc');
+    }
+  };
+
+  const SortHeader = ({ label, field }) => (
+    <button type="button" onClick={() => toggleSort(field)} className="flex items-center gap-1">
+      <span>{label}</span>
+      <span className="text-xs opacity-70">{sortBy === field ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
+    </button>
+  );
+
+  // When opening viewer, compute index within current sorted list
+  const openViewer = (entry) => {
+    const idx = sortedJournals.findIndex((j) => j.id === entry.id);
+    setViewerIndex(idx);
+    setViewer(entry);
+  };
+
+  // Keyboard navigation while viewer is open
+  React.useEffect(() => {
+    if (viewerIndex < 0) return;
+    const handleKey = (e) => {
+      if (!sortedJournals.length) return;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        const next = (viewerIndex + 1) % sortedJournals.length;
+        setViewerIndex(next);
+        setViewer(sortedJournals[next]);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        const prev = (viewerIndex - 1 + sortedJournals.length) % sortedJournals.length;
+        setViewerIndex(prev);
+        setViewer(sortedJournals[prev]);
+      }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [viewerIndex, sortedJournals]);
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-screen-2xl overflow-hidden">
+        <div className="flex items-center justify-between p-4 border-b">
+          <div className="flex items-center gap-3">
+            <BookOpen className="w-5 h-5 text-gray-700" />
+            <h3 className="text-lg font-semibold text-gray-900">Your Journal</h3>
+          </div>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="p-4">
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            <button
+              type="button"
+              onClick={onSelectAll}
+              className="px-3 py-1 rounded-full border border-gray-300 bg-white text-sm text-gray-700 hover:bg-gray-50"
+              title="Select all categories"
+            >
+              Select All
+            </button>
+            {Object.entries(categoryConfig).map(([key, config]) => {
+              const active = selectedCategories.has(key);
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => onToggleCategory(key)}
+                  className={`px-3 py-1 rounded-full border text-sm ${active ? 'border-gray-300 bg-white' : 'border-gray-200 bg-gray-50 opacity-70'}`}
+                >
+                  {config.label}
+                </button>
+              );
+            })}
+            <div className="ml-auto flex items-center gap-2">
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="px-3 py-2 border rounded text-sm w-64"
+                placeholder="Search title, content, or event..."
+              />
+            </div>
+          </div>
+
+          {sortedJournals.length === 0 ? (
+            <div className="text-sm text-gray-600">No journal entries for the selected filters.</div>
+          ) : (
+            <div className="overflow-auto border rounded">
+              <table className="min-w-full text-sm">
+                <thead className="bg-gray-50 text-gray-700">
+                  <tr>
+                    <th className="text-left font-semibold px-3 py-2 w-48"><SortHeader label="Title" field="title" /></th>
+                    <th className="text-left font-semibold px-3 py-2 w-48">Event</th>
+                    <th className="text-left font-semibold px-3 py-2 w-36"><SortHeader label="Event Date" field="eventDate" /></th>
+                    <th className="text-left font-semibold px-3 py-2 w-40"><SortHeader label="Entry Date" field="createdAt" /></th>
+                    <th className="text-left font-semibold px-3 py-2 w-28">Category</th>
+                    <th className="text-left font-semibold px-3 py-2">Excerpt</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {sortedJournals.map((j) => (
+                    <tr key={j.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => openViewer(j)}>
+                      <td className="px-3 py-2 font-medium text-gray-900 truncate" title={j.title || 'Journal Entry'}>
+                        {j.title || 'Journal Entry'}
+                      </td>
+                      <td className="px-3 py-2 text-gray-800 truncate" title={j.eventTitle}>{j.eventTitle}</td>
+                      <td className="px-3 py-2 text-gray-600">{new Date(j.eventDate).toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' })}</td>
+                      <td className="px-3 py-2 text-gray-600">{new Date(j.createdAt).toLocaleString()}</td>
+                      <td className="px-3 py-2 text-gray-700">{categoryConfig[j.category]?.label || j.category}</td>
+                      <td className="px-3 py-2 text-gray-700">
+                        <span className="line-clamp-2" style={{display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden'}}>
+                          {j.content}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {viewer && (
+        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b">
+              <div>
+                <div className="text-xs text-gray-500">{categoryConfig[viewer.category]?.label || viewer.category}</div>
+                <h4 className="text-lg font-semibold text-gray-900">{viewer.title || 'Journal Entry'}</h4>
+                <div className="text-xs text-gray-600 mt-1">
+                  <span className="mr-4"><strong>Event:</strong> {viewer.eventTitle} — {new Date(viewer.eventDate).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })}</span>
+                  <span><strong>Entry:</strong> {new Date(viewer.createdAt).toLocaleString()}</span>
+                </div>
+              </div>
+              <button onClick={() => { setViewer(null); setViewerIndex(-1); }} className="text-gray-500 hover:text-gray-700"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-4">
+              <div className="text-sm text-gray-800 whitespace-pre-wrap leading-6" style={{maxHeight:'70vh', overflow:'auto'}}>
+                {viewer.content}
+              </div>
+              <div className="flex justify-between items-center mt-3 text-xs text-gray-500">
+                <span>Use Up/Down arrow keys to browse</span>
+                <span>{viewerIndex + 1} / {sortedJournals.length}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Add/Edit Event Form Component
+function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGallery }) {
+  const isEdit = mode === 'edit';
+  const [formData, setFormData] = useState({
+    title: initialEvent?.title || '',
+    description: initialEvent?.description || '',
+    date: initialEvent ? new Date(initialEvent.date).toISOString().slice(0, 10) : '',
+    category: initialEvent?.category || 'milestone',
+    importance: initialEvent?.importance ?? 5,
+    image: initialEvent?.image || null,
+    images: initialEvent?.images || [],
+    journals: initialEvent?.journals || []
+  });
+  const [imagePreview, setImagePreview] = useState(initialEvent?.image || null);
+  const fileInputRef = useRef(null);
+  const galleryInputRef = useRef(null);
+
+  // Journal local draft
+  const [journalDraft, setJournalDraft] = useState({ title: '', content: '' });
+  const [editingJournalId, setEditingJournalId] = useState(null);
+
+  const addJournal = () => {
+    const hasDraft = journalDraft.content.trim().length > 0 || journalDraft.title.trim().length > 0;
+    const newId = `${Date.now()}-journal`;
+    const entry = hasDraft
+      ? {
+          id: newId,
+          title: journalDraft.title.trim() || 'Journal Entry',
+          content: journalDraft.content.trim(),
+          createdAt: new Date().toISOString()
+        }
+      : {
+          id: newId,
+          title: 'Journal Entry',
+          content: '',
+          createdAt: new Date().toISOString()
+        };
+
+    setFormData((prev) => ({ ...prev, journals: [...(prev.journals || []), entry] }));
+    setJournalDraft({ title: '', content: '' });
+    // Open the newly added entry in edit mode if it was empty draft
+    setEditingJournalId(newId);
+  };
+
+  const updateJournal = (id, updates) => {
+    setFormData((prev) => ({
+      ...prev,
+      journals: (prev.journals || []).map(j => j.id === id ? { ...j, ...updates } : j)
+    }));
+  };
+
+  const removeJournal = (id) => {
+    setFormData((prev) => ({
+      ...prev,
+      journals: (prev.journals || []).filter(j => j.id !== id)
+    }));
+  };
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setImagePreview(e.target.result);
+        setFormData({ ...formData, image: e.target.result });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleGalleryUpload = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    const readers = files.map((file) => new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (ev) => resolve({ id: `${Date.now()}-${file.name}`, url: ev.target.result, name: file.name });
+      reader.readAsDataURL(file);
+    }));
+    Promise.all(readers).then((items) => {
+      setFormData((prev) => ({ ...prev, images: [...(prev.images || []), ...items] }));
+    });
+  };
+
+  const renameGalleryItem = (id, name) => {
+    setFormData((prev) => ({
+      ...prev,
+      images: (prev.images || []).map((img) => (img.id === id ? { ...img, name } : img))
+    }));
+  };
+
+  const removeGalleryItem = (id) => {
+    setFormData((prev) => ({
+      ...prev,
+      images: (prev.images || []).filter((img) => img.id !== id)
+    }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (formData.title && formData.date) {
+      const normalized = {
+        id: isEdit ? initialEvent.id : Date.now(),
+        ...formData,
+        date: new Date(formData.date),
+        importance: parseInt(formData.importance),
+        images: formData.images || [],
+        journals: formData.journals || []
+      };
+      onSave(normalized);
+      onClose();
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <div className="p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold text-gray-900">{isEdit ? 'Edit Event' : 'Add New Event'}</h2>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Title *</label>
+              <input
+                type="text"
+                value={formData.title}
+                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="Event title"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
+              <input
+                type="date"
+                value={formData.date}
+                onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+              <select
+                value={formData.category}
+                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                {Object.entries(categoryConfig).map(([key, config]) => (
+                  <option key={key} value={key}>{config.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+              <textarea
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                rows="3"
+                placeholder="Tell us about this event..."
+              />
+            </div>
+
+            {/* Main photo (kept exactly as before behavior-wise) */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Photo</label>
+              <div 
+                onClick={() => fileInputRef.current?.click()}
+                className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-blue-400 transition-colors"
+              >
+                {imagePreview ? (
+                  <div className="relative">
+                    <img src={imagePreview} alt="Preview" className="max-h-32 mx-auto rounded" />
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setImagePreview(null);
+                        setFormData({ ...formData, image: null });
+                      }}
+                      className="absolute top-0 right-0 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <Camera className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-600">Click to upload a photo</p>
+                    <p className="text-xs text-gray-400 mt-1">JPG, PNG up to 10MB</p>
+                  </div>
+                )}
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="hidden"
+              />
+            </div>
+
+            {/* Additional photos */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-medium text-gray-700">Additional Photos</label>
+                <button type="button" onClick={() => galleryInputRef.current?.click()} className="text-sm text-blue-600 hover:underline">Add Photos</button>
+              </div>
+              <input ref={galleryInputRef} type="file" accept="image/*" multiple onChange={handleGalleryUpload} className="hidden" />
+              {(formData.images || []).length === 0 ? (
+                <p className="text-xs text-gray-500">No additional photos yet.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {(formData.images || []).map((img, idx) => (
+                    <li key={img.id} className="flex items-center gap-2 p-2 border rounded">
+                      <img src={img.url} alt={img.name || `Photo ${idx+1}`} className="w-12 h-12 object-cover rounded cursor-pointer" onClick={() => onOpenGallery?.(formData, idx + (formData.image ? 1 : 0))} />
+                      <input
+                        type="text"
+                        value={img.name || ''}
+                        onChange={(e) => renameGalleryItem(img.id, e.target.value)}
+                        className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm"
+                        placeholder="Photo name"
+                      />
+                      <button type="button" onClick={() => removeGalleryItem(img.id)} className="text-xs text-red-600 hover:underline">Remove</button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {/* Journals */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700">Journal Entries</label>
+              </div>
+              <div className="space-y-2 mb-3">
+                <input
+                  type="text"
+                  value={journalDraft.title}
+                  onChange={(e) => setJournalDraft({ ...journalDraft, title: e.target.value })}
+                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                  placeholder="Title (optional)"
+                />
+                <textarea
+                  value={journalDraft.content}
+                  onChange={(e) => setJournalDraft({ ...journalDraft, content: e.target.value })}
+                  className="w-full px-2 py-2 border border-gray-300 rounded text-sm"
+                  rows="3"
+                  placeholder="Write a note about this event... (or click Add Entry to start)"
+                />
+                <button type="button" onClick={addJournal} className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">Add Entry</button>
+              </div>
+
+              {(formData.journals || []).length === 0 ? (
+                <p className="text-xs text-gray-500">No journal entries yet.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {(formData.journals || []).map((j) => (
+                    <li key={j.id} className="border rounded p-2">
+                      {editingJournalId === j.id ? (
+                        <div className="space-y-2">
+                          <input
+                            type="text"
+                            value={j.title}
+                            onChange={(e) => updateJournal(j.id, { title: e.target.value })}
+                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                          />
+                          <textarea
+                            value={j.content}
+                            onChange={(e) => updateJournal(j.id, { content: e.target.value })}
+                            className="w-full px-2 py-2 border border-gray-300 rounded text-sm"
+                            rows="3"
+                          />
+                          <div className="flex gap-2">
+                            <button type="button" onClick={() => setEditingJournalId(null)} className="text-sm px-3 py-1 border rounded">Done</button>
+                            <button type="button" onClick={() => removeJournal(j.id)} className="text-sm px-3 py-1 border rounded text-red-600">Delete</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          <div className="flex justify-between items-center">
+                            <div className="font-medium text-gray-900 truncate" title={j.title || 'Journal Entry'}>{j.title || 'Journal Entry'}</div>
+                            <div className="text-xs text-gray-500">{new Date(j.createdAt).toLocaleString()}</div>
+                          </div>
+                          <div className="text-sm text-gray-700 whitespace-pre-wrap" style={{maxHeight:'4.5rem', overflow:'auto'}}>{j.content}</div>
+                          <div className="flex gap-2 mt-2">
+                            <button type="button" onClick={() => setEditingJournalId(j.id)} className="text-sm px-3 py-1 border rounded">Edit</button>
+                            <button type="button" onClick={() => removeJournal(j.id)} className="text-sm px-3 py-1 border rounded text-red-600">Delete</button>
+                          </div>
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="flex gap-3 pt-4">
+              {isEdit && (
+                <button
+                  type="button"
+                  onClick={() => { onDelete?.(initialEvent); onClose(); }}
+                  className="px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors"
+                >
+                  Delete
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                {isEdit ? 'Save Changes' : 'Add Event'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EventFull() {
+  const [events, setEvents] = useState(sampleEvents);
+  const [zoom, setZoom] = useState(1);
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(null);
+  const timelineRef = useRef(null);
+  const [selectedCategories, setSelectedCategories] = useState(new Set(Object.keys(categoryConfig)));
+  
+  const allCategoryKeys = Object.keys(categoryConfig);
+  const [showAllPhotos, setShowAllPhotos] = useState(false);
+  const [showAllJournals, setShowAllJournals] = useState(false);
+  const [galleryForEvent, setGalleryForEvent] = useState(null);
+  const [galleryStartIndex, setGalleryStartIndex] = useState(0);
+  const [showBackgroundPicker, setShowBackgroundPicker] = useState(false);
+  const [backgroundUrl, setBackgroundUrl] = useState(() => {
+    try { return localStorage.getItem('eventfull:bg') || ''; } catch { return ''; }
+  });
+
+  useEffect(() => {
+    try {
+      if (backgroundUrl) localStorage.setItem('eventfull:bg', backgroundUrl); else localStorage.removeItem('eventfull:bg');
+    } catch {}
+  }, [backgroundUrl]);
+
+  // Sort events by date
+  const sortedEvents = [...events].sort((a, b) => a.date.getTime() - b.date.getTime());
+  const filteredEvents = sortedEvents.filter(e => selectedCategories.has(e.category));
+
+  // Calculate timeline span
+  const firstEvent = sortedEvents[0];
+  const lastEvent = sortedEvents[sortedEvents.length - 1];
+  const startYear = firstEvent.date.getFullYear();
+  const endYear = lastEvent.date.getFullYear();
+  const totalYears = endYear - startYear + 1;
+
+  const toggleCategory = (key) => {
+    setSelectedCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const selectAllCategories = () => {
+    setSelectedCategories(new Set(allCategoryKeys));
+  };
+
+  // Calculate event position on timeline
+  const getEventPosition = (event) => {
+    const eventYear = event.date.getFullYear();
+    const eventMonth = event.date.getMonth();
+    const yearProgress = (eventYear - startYear + eventMonth / 12) / totalYears;
+    const timelineWidth = Math.max(1400, totalYears * 120 * zoom) - 400; // Account for padding
+    return 200 + (yearProgress * timelineWidth); // Return pixel position instead of percentage
+  };
+
+  const handleZoomIn = () => setZoom(prev => Math.min(prev * 1.5, 5));
+  const handleZoomOut = () => setZoom(prev => Math.max(prev / 1.5, 0.3));
+
+  const getCategoryIcon = (category) => {
+    const config = categoryConfig[category] || categoryConfig.milestone;
+    const IconComponent = config.icon;
+    return <IconComponent className="w-3 h-3" />;
+  };
+
+  const getCategoryColor = (category) => {
+    return categoryConfig[category]?.color || categoryConfig.milestone.color;
+  };
+
+  const formatDate = (date) => {
+    return date.toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+  };
+
+  const getAgeAtEvent = (eventDate) => {
+    const birthDate = sortedEvents[0].date;
+    const age = eventDate.getFullYear() - birthDate.getFullYear();
+    const monthDiff = eventDate.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && eventDate.getDate() < birthDate.getDate())) {
+      return age - 1;
+    }
+    return age;
+  };
+
+  const addEvent = (newEvent) => {
+    setEvents([...events, newEvent]);
+  };
+
+  const saveEditedEvent = (updatedEvent) => {
+    setEvents(events.map(e => (e.id === updatedEvent.id ? updatedEvent : e)));
+  };
+
+  const deleteEvent = (eventToDelete) => {
+    setEvents(events.filter(e => e.id !== eventToDelete.id));
+  };
+
+  const openEventGallery = (formDataLike, startIndex) => {
+    // When invoked from form during edit, prefer the current editingEvent merged with recent formData-like
+    const source = editingEvent ? { ...editingEvent, ...formDataLike } : formDataLike;
+    setGalleryForEvent(source);
+    setGalleryStartIndex(startIndex || 0);
+  };
+
+  return (
+    <div className="w-full h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex flex-col overflow-hidden relative">
+      {/* Header */}
+      <div className="bg-white/80 backdrop-blur-sm shadow-sm border-b border-gray-200 px-6 py-4 relative z-10">
+        <div className="flex justify-between items-center">
+          <div>
+            <div className="flex items-center gap-2">
+              <img src="/logo-eventfull.svg" alt="EventFull" className="w-8 h-8 md:w-10 md:h-10 lg:w-12 lg:h-12" />
+              <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold"><span className="text-blue-600">Event</span><span className="text-purple-600">Full</span></h1>
+            </div>
+            <p className="text-gray-600 mt-1">Your Life's Timeline</p>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setShowAllPhotos(true)}
+              className="border border-gray-300 text-gray-700 px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50"
+              title="View all photos"
+            >
+              <Images className="w-4 h-4" />
+              Photos
+            </button>
+            <button 
+              onClick={() => setShowAllJournals(true)}
+              className="border border-gray-300 text-gray-700 px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50"
+              title="View all journals"
+            >
+              <BookOpen className="w-4 h-4" />
+              Journals
+            </button>
+            <div className="bg-gray-100 rounded-lg p-1 flex gap-1">
+              <button 
+                onClick={handleZoomOut}
+                className="p-2 hover:bg-white rounded transition-colors"
+                title="Zoom Out"
+              >
+                <ZoomOut className="w-4 h-4" />
+              </button>
+              <button 
+                onClick={handleZoomIn}
+                className="p-2 hover:bg-white rounded transition-colors"
+                title="Zoom In"
+              >
+                <ZoomIn className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <button 
+              onClick={() => setShowAddForm(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Add Event
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Main content wrapper lifted above background layer */}
+      <div className="relative z-0 flex-1 overflow-hidden">
+        {/* Background layer (applies only to content area) */}
+        {backgroundUrl && (
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              backgroundImage: `url(${backgroundUrl})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              filter: 'saturate(0.8) brightness(0.75)',
+              opacity: 0.3
+            }}
+          />
+        )}
+        {/* Timeline Container */}
+        <div 
+          ref={timelineRef}
+          className="h-full overflow-x-auto overflow-y-auto p-6"
+          style={{ scrollBehavior: 'smooth' }}
+        >
+          {/* Timeline Content */}
+          <div 
+            className="relative flex items-center"
+            style={{ 
+              width: `${Math.max(1400, totalYears * 120 * zoom)}px`,
+              height: '800px',
+              paddingTop: '200px',
+              paddingBottom: '300px',
+              paddingLeft: '200px',
+              paddingRight: '200px'
+            }}
+          >
+            {/* Main Timeline Line */}
+            <div 
+              className="absolute top-1/2 transform -translate-y-1/2 h-1 bg-gradient-to-r from-blue-400 to-purple-400 rounded-full shadow-sm" 
+              style={{
+                left: '200px',
+                right: '200px'
+              }}
+            />
+
+            {/* Year Markers */}
+            {Array.from({ length: totalYears + 1 }, (_, i) => {
+              const year = startYear + i;
+              const position = (i / totalYears) * 100;
+              const timelineWidth = Math.max(1400, totalYears * 120 * zoom) - 400; // Account for padding
+              const markerPositionPx = 200 + (position / 100) * timelineWidth; // Offset by left padding
+              
+              // Scale year label size with zoom (base 12px at zoom=1)
+              const basePx = 12;
+              const minPx = 10;
+              const maxPx = 24;
+              const yearFontSizePx = Math.max(minPx, Math.min(maxPx, Math.round(basePx * zoom)));
+              
+              return (
+                <div
+                  key={year}
+                  className="absolute top-1/2 transform -translate-y-1/2 -translate-x-1/2"
+                  style={{ left: `${markerPositionPx}px` }}
+                >
+                  <div className="w-px h-12 bg-gray-300" />
+                  <div className="text-gray-500 mt-2 whitespace-nowrap font-medium"
+                       style={{ fontSize: `${yearFontSizePx}px` }}>
+                    {year}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Events */}
+            {filteredEvents.map((event, index) => {
+              const position = getEventPosition(event);
+              const isAbove = index % 2 === 0;
+              const age = getAgeAtEvent(event.date);
+              
+              // Smart positioning to prevent cards from going off-screen
+              const getCardPosition = () => {
+                const cardWidth = 320; // Card width in pixels
+                const cardHeight = event.image ? 320 : 240; // Estimated card height
+                const timelineCenter = 50; // Timeline is at 50% of container height
+                const containerPadding = 15; // Padding from edges
+                
+                // Check horizontal positioning - prevent cards from going off left/right edges
+                const timelineWidth = Math.max(1400, totalYears * 120 * zoom);
+                const cardHalfWidth = cardWidth / 2;
+                
+                let horizontalAdjustment = '';
+                if (position - cardHalfWidth < 250) {
+                  horizontalAdjustment = 'left-0 transform-none translate-x-0';
+                } else if (position + cardHalfWidth > timelineWidth - 250) {
+                  horizontalAdjustment = 'right-0 transform-none translate-x-0';
+                } else {
+                  horizontalAdjustment = 'transform -translate-x-1/2';
+                }
+                
+                if (isAbove && (timelineCenter - cardHeight/2 - 10) < containerPadding) {
+                  return { 
+                    position: 'bottom-8', 
+                    connectionClass: 'top-full h-12',
+                    horizontalClass: horizontalAdjustment
+                  };
+                }
+                
+                if (!isAbove && (timelineCenter + cardHeight/2 + 10) > (100 - containerPadding)) {
+                  return { 
+                    position: 'top-8', 
+                    connectionClass: 'bottom-full h-12',
+                    horizontalClass: horizontalAdjustment
+                  };
+                }
+                
+                return {
+                  position: isAbove ? 'bottom-8' : 'top-8',
+                  connectionClass: isAbove ? 'top-full h-12' : 'bottom-full h-12',
+                  horizontalClass: horizontalAdjustment
+                };
+              };
+              
+              const cardPosition = getCardPosition();
+              
+              return (
+                <div
+                  key={event.id}
+                  className="absolute group cursor-pointer"
+                  style={{ 
+                    left: `${position}px`,
+                    top: '50%',
+                    transform: 'translate(-50%, -50%)'
+                  }}
+                  onClick={() => { setSelectedEvent(event); setEditingEvent(event); }}
+                >
+                  {/* Connection Line */}
+                  <div 
+                    className={`absolute w-px bg-gray-300 transform -translate-x-1/2 ${cardPosition.connectionClass}`}
+                  />
+                  
+                  {/* Event Dot */}
+                  <div 
+                    className={`w-5 h-5 rounded-full ${getCategoryColor(event.category)} border-3 border-white shadow-lg relative z-10 flex items-center justify-center text-white transform hover:scale-110 transition-transform`}
+                    style={{
+                      transform: `scale(${Math.max(0.8, event.importance / 10)}) ${selectedEvent?.id === event.id ? 'scale(1.3)' : ''}`
+                    }}
+                  >
+                    {event.image ? <Camera className="w-3 h-3" /> : getCategoryIcon(event.category)}
+                  </div>
+                  
+                  {/* Event Card */}
+                  <div 
+                    className={`absolute w-80 ${cardPosition.horizontalClass} ${cardPosition.position} ${selectedEvent?.id === event.id ? 'z-50' : 'z-30'}`}
+                    style={{
+                      maxHeight: '350px',
+                      overflowY: 'auto'
+                    }}
+                  >
+                    <div className={`bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden transition-all duration-200 ${
+                      selectedEvent?.id === event.id 
+                        ? 'ring-2 ring-blue-400 shadow-xl transform scale-105' 
+                        : 'group-hover:shadow-xl group-hover:transform group-hover:scale-102'
+                    }`}>
+                      {/* Event Image */}
+                      {event.image && (
+                        <div className="w-full h-32 bg-gray-100 overflow-hidden cursor-pointer" title="View photos" onClick={(e) => { e.stopPropagation(); setGalleryForEvent(event); setGalleryStartIndex(0); }}>
+                          <img 
+                            src={event.image} 
+                            alt={event.title}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      )}
+                      
+                      <div className="p-4">
+                        <div className="flex justify-between items-start mb-2">
+                          <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs text-white ${getCategoryColor(event.category)}`}>
+                            {getCategoryIcon(event.category)}
+                            <span>{categoryConfig[event.category]?.label || 'Event'}</span>
+                          </div>
+                          <span className="text-xs text-gray-500 font-medium">Age {age}</span>
+                        </div>
+                        
+                        <h3 className="font-bold text-gray-900 mb-1">{event.title}</h3>
+                        <p className="text-sm text-gray-600 mb-2">{formatDate(event.date)}</p>
+                        
+                        {event.description && (
+                          <p className="text-sm text-gray-700 leading-relaxed mb-3">{event.description}</p>
+                        )}
+                        
+                        {/* Importance indicator */}
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-gray-500">Importance:</span>
+                          <div className="flex gap-1">
+                            {Array.from({ length: 5 }, (_, i) => (
+                              <div 
+                                key={i} 
+                                className={`w-2 h-2 rounded-full ${
+                                  i < event.importance / 2 ? 'bg-yellow-400' : 'bg-gray-200'
+                                }`} 
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Category Legend */}
+      <div className="bg-white border-t border-gray-200 px-6 py-4">
+        <div className="flex flex-wrap gap-4 justify-center">
+          <button
+            type="button"
+            onClick={selectAllCategories}
+            className="px-3 py-1 rounded-full border border-gray-300 bg-white text-sm text-gray-700 hover:bg-gray-50"
+            title="Select all categories"
+          >
+            Select All
+          </button>
+          <div className="ml-auto hidden" />
+          {Object.entries(categoryConfig).map(([key, config]) => {
+            const isActive = selectedCategories.has(key);
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => toggleCategory(key)}
+                aria-pressed={isActive}
+                className={`flex items-center gap-2 px-3 py-1 rounded-full border transition-colors ${
+                  isActive ? 'border-gray-300 bg-white' : 'border-gray-200 bg-gray-50 opacity-60'
+                }`}
+                title={isActive ? `Hide ${config.label}` : `Show ${config.label}`}
+              >
+                <span className={`w-3 h-3 rounded-full ${config.color} inline-flex items-center justify-center`}>
+                  <config.icon className="w-2 h-2 text-white" />
+                </span>
+                <span className="text-sm text-gray-700">{config.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Stats Summary */}
+      <div className="relative bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3">
+        <div className="flex justify-center gap-8 text-sm">
+          <span><strong>{filteredEvents.length}</strong> Shown</span>
+          <span><strong>{events.length}</strong> Total</span>
+          <span><strong>{totalYears}</strong> Years Covered</span>
+          <span><strong>{getAgeAtEvent(new Date())}</strong> Current Age</span>
+          <span><strong>{events.filter(e => e.importance >= 8).length}</strong> Major Milestones</span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowBackgroundPicker(true)}
+          className="absolute right-4 top-1/2 -translate-y-1/2 px-3 py-1.5 border border-white/60 rounded text-white text-sm hover:bg-white/10"
+          title="Change background"
+        >
+          Background
+        </button>
+      </div>
+
+      {/* Add/Edit Event Form */}
+      {showAddForm && (
+        <EventForm 
+          mode="add"
+          onClose={() => setShowAddForm(false)}
+          onSave={addEvent}
+          onOpenGallery={(formDataLike, idx) => openEventGallery(formDataLike, idx)}
+        />
+      )}
+      {editingEvent && (
+        <EventForm
+          mode="edit"
+          initialEvent={editingEvent}
+          onClose={() => { setEditingEvent(null); setSelectedEvent(null); }}
+          onSave={saveEditedEvent}
+          onDelete={deleteEvent}
+          onOpenGallery={(formDataLike, idx) => openEventGallery(formDataLike, idx)}
+        />
+      )}
+
+      {/* Per-Event Gallery */}
+      {galleryForEvent && (
+        <EventGallery
+          event={galleryForEvent}
+          startIndex={galleryStartIndex}
+          onClose={() => { setGalleryForEvent(null); setGalleryStartIndex(0); }}
+        />
+      )}
+
+      {/* All Photos Modal */}
+      {showAllPhotos && (
+        <AllPhotosModal
+          events={events}
+          selectedCategories={selectedCategories}
+          onToggleCategory={toggleCategory}
+          onSelectAll={selectAllCategories}
+          onClose={() => setShowAllPhotos(false)}
+        />
+      )}
+
+      {/* All Journals Modal */}
+      {showAllJournals && (
+        <AllJournalsModal
+          events={events}
+          selectedCategories={selectedCategories}
+          onToggleCategory={toggleCategory}
+          onSelectAll={selectAllCategories}
+          onClose={() => setShowAllJournals(false)}
+        />
+      )}
+
+      {/* Background Picker */}
+      {showBackgroundPicker && (
+        <BackgroundModal
+          current={backgroundUrl}
+          onSelect={(url) => setBackgroundUrl(url)}
+          onClear={() => setBackgroundUrl('')}
+          onClose={() => setShowBackgroundPicker(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+export default EventFull;

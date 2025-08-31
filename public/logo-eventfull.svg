@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="EventFull logo">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2563EB"/>
+      <stop offset="1" stop-color="#9333EA"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#60A5FA"/>
+      <stop offset="1" stop-color="#C084FC"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity="0.2"/>
+    </filter>
+  </defs>
+
+  <!-- Outer ring representing a unified timeline -->
+  <circle cx="64" cy="64" r="48" stroke="url(#g)" stroke-width="8" fill="none" filter="url(#shadow)"/>
+
+  <!-- Interconnected event dots (increased density) -->
+  <circle cx="26" cy="50" r="5" fill="#93C5FD"/>
+  <circle cx="32" cy="38" r="6" fill="#60A5FA"/>
+  <circle cx="50" cy="26" r="5" fill="#A78BFA"/>
+  <circle cx="96" cy="46" r="6" fill="#C084FC"/>
+  <circle cx="102" cy="66" r="5" fill="#A78BFA"/>
+  <circle cx="86" cy="88" r="6" fill="#93C5FD"/>
+  <circle cx="66" cy="102" r="5" fill="#60A5FA"/>
+  <circle cx="40" cy="90" r="6" fill="#A78BFA"/>
+
+  <!-- Bezier connections -->
+  <path d="M26 50 C36 28, 70 22, 96 46" stroke="url(#g2)" stroke-width="3" fill="none"/>
+  <path d="M32 38 C44 30, 60 28, 96 46" stroke="url(#g2)" stroke-width="2.5" fill="none" opacity="0.9"/>
+  <path d="M50 26 C72 28, 100 38, 102 66" stroke="url(#g2)" stroke-width="2.5" fill="none" opacity="0.9"/>
+  <path d="M26 50 C24 68, 32 82, 40 90" stroke="url(#g2)" stroke-width="3" fill="none"/>
+  <path d="M40 90 C54 78, 74 78, 86 88" stroke="url(#g2)" stroke-width="3" fill="none"/>
+  <path d="M66 102 C78 98, 92 96, 102 66" stroke="url(#g2)" stroke-width="2.5" fill="none" opacity="0.9"/>
+
+  <!-- Central heart symbol (classic Valentine heart, centered and above) -->
+  <path d="M64 82
+           C64 82, 40 62, 40 48
+           C40 40, 46 36, 54 36
+           C60 36, 64 40, 64 44
+           C64 40, 68 36, 74 36
+           C82 36, 88 40, 88 48
+           C88 62, 64 82, 64 82 Z" fill="#2563EB" stroke="#ffffff" stroke-width="2"/>
+</svg> 
