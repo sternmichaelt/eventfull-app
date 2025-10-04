@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, ZoomIn, ZoomOut, Calendar, Heart, GraduationCap, Briefcase, Baby, Star, X, Camera, ChevronLeft, ChevronRight, Images, BookOpen } from 'lucide-react';
+import { Plus, ZoomIn, ZoomOut, Calendar, Heart, GraduationCap, Briefcase, Baby, Star, X, Camera, ChevronLeft, ChevronRight, Images, BookOpen, Settings } from 'lucide-react';
 // Optional AI import (safe to remove)
 import { classifyPhotos } from './ai/PhotoClassifier';
 
@@ -212,6 +212,306 @@ function BackgroundModal({ current, onSelect, onClear, onClose }) {
               Cancel
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SettingsModal({ currentBackground, onSelectBackground, onClearBackground, onClose }) {
+  const [activeTab, setActiveTab] = useState('background');
+  const [customCategories, setCustomCategories] = useState(() => {
+    try { 
+      const saved = localStorage.getItem('eventfull:customCategories');
+      return saved ? JSON.parse(saved) : {}; 
+    } catch { 
+      return {}; 
+    }
+  });
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategoryKey, setNewCategoryKey] = useState('');
+
+  // Save custom categories to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('eventfull:customCategories', JSON.stringify(customCategories));
+    } catch {}
+  }, [customCategories]);
+
+  // Get all categories (default + custom)
+  const getAllCategories = () => {
+    const merged = { ...categoryConfig };
+    Object.entries(customCategories).forEach(([key, custom]) => {
+      merged[key] = {
+        ...categoryConfig[custom.baseCategory] || categoryConfig.milestone,
+        label: custom.label
+      };
+    });
+    return merged;
+  };
+
+  const allCategories = getAllCategories();
+  const totalCategories = Object.keys(allCategories).length;
+  const canAddMore = totalCategories < 10;
+
+  const saveCustomCategory = (key, label, baseCategory = 'milestone') => {
+    setCustomCategories(prev => ({
+      ...prev,
+      [key]: { label, baseCategory }
+    }));
+  };
+
+  const deleteCustomCategory = (key) => {
+    setCustomCategories(prev => {
+      const updated = { ...prev };
+      delete updated[key];
+      return updated;
+    });
+  };
+
+  const startEditing = (key, currentLabel) => {
+    setEditingCategory(key);
+    setNewCategoryName(currentLabel);
+  };
+
+  const saveEdit = () => {
+    if (editingCategory && newCategoryName.trim()) {
+      saveCustomCategory(editingCategory, newCategoryName.trim());
+      setEditingCategory(null);
+      setNewCategoryName('');
+    }
+  };
+
+  const addNewCategory = () => {
+    if (newCategoryKey.trim() && newCategoryName.trim() && canAddMore) {
+      const key = newCategoryKey.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (key && !allCategories[key]) {
+        saveCustomCategory(key, newCategoryName.trim());
+        setNewCategoryKey('');
+        setNewCategoryName('');
+      }
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b">
+          <h3 className="text-xl font-bold text-gray-900">Settings</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        
+        {/* Tab Navigation */}
+        <div className="border-b border-gray-200">
+          <nav className="flex space-x-8 px-6">
+            <button
+              type="button"
+              onClick={() => setActiveTab('background')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'background'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Background
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('categories')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'categories'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Category Labels
+            </button>
+          </nav>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6">
+          {/* Background Tab */}
+          {activeTab === 'background' && (
+            <div className="space-y-4">
+              <div>
+                <h4 className="text-lg font-semibold text-gray-900 mb-3">Choose Background</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {DEFAULT_BACKGROUNDS.map(bg => (
+                    <button 
+                      key={bg.id} 
+                      type="button" 
+                      onClick={() => onSelectBackground(bg.url)} 
+                      className={`border rounded overflow-hidden text-left transition-all ${
+                        currentBackground === bg.url ? 'ring-2 ring-blue-500 border-blue-500' : 'border-gray-300 hover:border-gray-400'
+                      }`}
+                    >
+                      <div className="w-full h-24 bg-gray-100 overflow-hidden">
+                        <img src={bg.url} alt={bg.name} className="w-full h-full object-cover" />
+                      </div>
+                      <div className="px-2 py-1 text-xs text-gray-800">{bg.name}</div>
+                    </button>
+                  ))}
+                </div>
+                
+                <div className="mt-3 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onClearBackground()}
+                    className="px-3 py-1.5 border border-red-300 text-red-600 rounded text-sm hover:bg-red-50 transition-colors"
+                  >
+                    No Background
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Category Labels Tab */}
+          {activeTab === 'categories' && (
+            <div className="space-y-4">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-lg font-semibold text-gray-900">Event Categories</h4>
+                  <span className="text-sm text-gray-500">{totalCategories}/10 categories</span>
+                </div>
+                <p className="text-sm text-gray-600 mb-4">
+                  Manage your event categories. You can rename existing categories and add up to 10 total categories.
+                </p>
+                
+                {/* Existing Categories */}
+                <div className="space-y-2 mb-4">
+                  {Object.entries(allCategories).map(([key, config]) => {
+                    const IconComponent = config.icon;
+                    const isDefault = Object.keys(categoryConfig).includes(key);
+                    const isEditing = editingCategory === key;
+                    
+                    return (
+                      <div key={key} className="border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition-colors">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-6 h-6 rounded-full ${config.color} flex items-center justify-center flex-shrink-0`}>
+                            <IconComponent className="w-3 h-3 text-white" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            {isEditing ? (
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="text"
+                                  value={newCategoryName}
+                                  onChange={(e) => setNewCategoryName(e.target.value)}
+                                  className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm"
+                                  placeholder="Category name"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={saveEdit}
+                                  className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingCategory(null);
+                                    setNewCategoryName('');
+                                  }}
+                                  className="px-2 py-1 border border-gray-300 rounded text-xs hover:bg-gray-50"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-between">
+                                <div className="min-w-0 flex-1">
+                                  <div className="font-medium text-gray-900 truncate">{config.label}</div>
+                                  <div className="text-xs text-gray-500">Category: {key}</div>
+                                </div>
+                                <div className="flex gap-1 flex-shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => startEditing(key, config.label)}
+                                    className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50"
+                                  >
+                                    Rename
+                                  </button>
+                                  {!isDefault && (
+                                    <button
+                                      type="button"
+                                      onClick={() => deleteCustomCategory(key)}
+                                      className="px-2 py-1 text-xs border border-red-300 text-red-600 rounded hover:bg-red-50"
+                                    >
+                                      Delete
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Add New Category */}
+                {canAddMore && (
+                  <div className="border border-dashed border-gray-300 rounded-lg p-3">
+                    <h5 className="font-medium text-gray-900 mb-2">Add New Category</h5>
+                    <div className="space-y-2">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Category Key</label>
+                        <input
+                          type="text"
+                          value={newCategoryKey}
+                          onChange={(e) => setNewCategoryKey(e.target.value)}
+                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                          placeholder="e.g., travel, hobby, achievement"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Use lowercase letters and numbers only</p>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Category Name</label>
+                        <input
+                          type="text"
+                          value={newCategoryName}
+                          onChange={(e) => setNewCategoryName(e.target.value)}
+                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                          placeholder="e.g., Travel, Hobby, Achievement"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={addNewCategory}
+                        disabled={!newCategoryKey.trim() || !newCategoryName.trim()}
+                        className="px-3 py-1.5 bg-green-600 text-white rounded text-sm hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Add Category
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {!canAddMore && (
+                  <div className="text-sm text-gray-500 bg-gray-50 p-2 rounded">
+                    You've reached the maximum of 10 categories. Delete a custom category to add a new one.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Close Button */}
+        <div className="border-t border-gray-200 p-4 bg-gray-50">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            Close Settings
+          </button>
         </div>
       </div>
     </div>
@@ -435,7 +735,7 @@ function EventGallery({ event, startIndex = 0, onClose }) {
   );
 }
 
-function AllPhotosModal({ events, selectedCategories, onClose, onToggleCategory, onSelectAll }) {
+function AllPhotosModal({ events, selectedCategories, onClose, onToggleCategory, onSelectAll, allCategories }) {
   const allPhotos = events.flatMap((e) => {
     const photos = [];
     if (e.image) photos.push({ id: `${e.id}-main`, url: e.image, name: e.title || 'Image', eventId: e.id, category: e.category });
@@ -513,7 +813,7 @@ function AllPhotosModal({ events, selectedCategories, onClose, onToggleCategory,
               >
                 Select All
               </button>
-              {Object.entries(categoryConfig).map(([key, config]) => {
+              {Object.entries(allCategories).map(([key, config]) => {
                 const active = selectedCategories.has(key);
                 return (
                   <button
@@ -622,7 +922,7 @@ function AllPhotosModal({ events, selectedCategories, onClose, onToggleCategory,
                       <img src={p.url} alt={p.name} className="w-full h-56 object-cover" />
                       <div className="p-2 text-xs text-gray-700">
                         <div className="font-medium truncate" title={p.name}>{p.name}</div>
-                        <div className="text-gray-500">{categoryConfig[p.category]?.label || p.category}</div>
+                        <div className="text-gray-500">{allCategories[p.category]?.label || p.category}</div>
                       </div>
                     </div>
                   );
@@ -664,7 +964,7 @@ function AllPhotosModal({ events, selectedCategories, onClose, onToggleCategory,
   );
 }
 
-function AllJournalsModal({ events, selectedCategories, onClose, onToggleCategory, onSelectAll }) {
+function AllJournalsModal({ events, selectedCategories, onClose, onToggleCategory, onSelectAll, allCategories }) {
   const allJournalsRaw = events.flatMap((e) => {
     const entries = (e.journals || []).map((j) => ({ ...j, eventId: e.id, eventTitle: e.title, eventDate: e.date, category: e.category }));
     return entries;
@@ -764,7 +1064,7 @@ function AllJournalsModal({ events, selectedCategories, onClose, onToggleCategor
             >
               Select All
             </button>
-            {Object.entries(categoryConfig).map(([key, config]) => {
+            {Object.entries(allCategories).map(([key, config]) => {
               const active = selectedCategories.has(key);
               return (
                 <button
@@ -812,7 +1112,7 @@ function AllJournalsModal({ events, selectedCategories, onClose, onToggleCategor
                       <td className="px-3 py-2 text-gray-800 truncate" title={j.eventTitle}>{j.eventTitle}</td>
                       <td className="px-3 py-2 text-gray-600">{new Date(j.eventDate).toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' })}</td>
                       <td className="px-3 py-2 text-gray-600">{new Date(j.createdAt).toLocaleString()}</td>
-                      <td className="px-3 py-2 text-gray-700">{categoryConfig[j.category]?.label || j.category}</td>
+                      <td className="px-3 py-2 text-gray-700">{allCategories[j.category]?.label || j.category}</td>
                       <td className="px-3 py-2 text-gray-700">
                         <span className="line-clamp-2" style={{display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden'}}>
                           {j.content}
@@ -832,7 +1132,7 @@ function AllJournalsModal({ events, selectedCategories, onClose, onToggleCategor
           <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl overflow-hidden">
             <div className="flex items-center justify-between p-4 border-b">
               <div>
-                <div className="text-xs text-gray-500">{categoryConfig[viewer.category]?.label || viewer.category}</div>
+                <div className="text-xs text-gray-500">{allCategories[viewer.category]?.label || viewer.category}</div>
                 <h4 className="text-lg font-semibold text-gray-900">{viewer.title || 'Journal Entry'}</h4>
                 <div className="text-xs text-gray-600 mt-1">
                   <span className="mr-4"><strong>Event:</strong> {viewer.eventTitle} — {new Date(viewer.eventDate).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })}</span>
@@ -858,7 +1158,7 @@ function AllJournalsModal({ events, selectedCategories, onClose, onToggleCategor
 }
 
 // Add/Edit Event Form Component
-function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGallery }) {
+function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGallery, allCategories }) {
   const isEdit = mode === 'edit';
   const [formData, setFormData] = useState({
     title: initialEvent?.title || '',
@@ -1012,7 +1312,7 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
                 onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
-                {Object.entries(categoryConfig).map(([key, config]) => (
+                {Object.entries(allCategories).map(([key, config]) => (
                   <option key={key} value={key}>{config.label}</option>
                 ))}
               </select>
@@ -1201,14 +1501,38 @@ function EventFull() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
   const timelineRef = useRef(null);
-  const [selectedCategories, setSelectedCategories] = useState(new Set(Object.keys(categoryConfig)));
   
-  const allCategoryKeys = Object.keys(categoryConfig);
+  // Load custom categories from localStorage
+  const [customCategories, setCustomCategories] = useState(() => {
+    try { 
+      const saved = localStorage.getItem('eventfull:customCategories');
+      return saved ? JSON.parse(saved) : {}; 
+    } catch { 
+      return {}; 
+    }
+  });
+
+  // Get all categories (default + custom)
+  const getAllCategories = () => {
+    const merged = { ...categoryConfig };
+    Object.entries(customCategories).forEach(([key, custom]) => {
+      merged[key] = {
+        ...categoryConfig[custom.baseCategory] || categoryConfig.milestone,
+        label: custom.label
+      };
+    });
+    return merged;
+  };
+
+  const allCategories = getAllCategories();
+  const allCategoryKeys = Object.keys(allCategories);
+  const [selectedCategories, setSelectedCategories] = useState(new Set(allCategoryKeys));
   const [showAllPhotos, setShowAllPhotos] = useState(false);
   const [showAllJournals, setShowAllJournals] = useState(false);
   const [galleryForEvent, setGalleryForEvent] = useState(null);
   const [galleryStartIndex, setGalleryStartIndex] = useState(0);
   const [showBackgroundPicker, setShowBackgroundPicker] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [backgroundUrl, setBackgroundUrl] = useState(() => {
     try { return localStorage.getItem('eventfull:bg') || ''; } catch { return ''; }
   });
@@ -1259,13 +1583,13 @@ function EventFull() {
   const handleZoomOut = () => setZoom(prev => Math.max(prev / 1.5, 0.3));
 
   const getCategoryIcon = (category) => {
-    const config = categoryConfig[category] || categoryConfig.milestone;
+    const config = allCategories[category] || allCategories.milestone;
     const IconComponent = config.icon;
     return <IconComponent className="w-3 h-3" />;
   };
 
   const getCategoryColor = (category) => {
-    return categoryConfig[category]?.color || categoryConfig.milestone.color;
+    return allCategories[category]?.color || allCategories.milestone.color;
   };
 
   const formatDate = (date) => {
@@ -1351,6 +1675,14 @@ function EventFull() {
                 <ZoomIn className="w-4 h-4" />
               </button>
             </div>
+            
+            <button 
+              onClick={() => setShowSettings(true)}
+              className="border border-gray-300 text-gray-700 px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50 transition-colors"
+              title="Settings"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
             
             <button 
               onClick={() => setShowAddForm(true)}
@@ -1539,7 +1871,7 @@ function EventFull() {
                         <div className="flex justify-between items-start mb-2">
                           <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs text-white ${getCategoryColor(event.category)}`}>
                             {getCategoryIcon(event.category)}
-                            <span>{categoryConfig[event.category]?.label || 'Event'}</span>
+                            <span>{allCategories[event.category]?.label || 'Event'}</span>
                           </div>
                           <span className="text-xs text-gray-500 font-medium">Age {age}</span>
                         </div>
@@ -1587,7 +1919,7 @@ function EventFull() {
             Select All
           </button>
           <div className="ml-auto hidden" />
-          {Object.entries(categoryConfig).map(([key, config]) => {
+          {Object.entries(allCategories).map(([key, config]) => {
             const isActive = selectedCategories.has(key);
             return (
               <button
@@ -1611,7 +1943,7 @@ function EventFull() {
       </div>
 
       {/* Stats Summary */}
-      <div className="relative bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3">
+      <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3">
         <div className="flex justify-center gap-8 text-sm">
           <span><strong>{filteredEvents.length}</strong> Shown</span>
           <span><strong>{events.length}</strong> Total</span>
@@ -1619,14 +1951,6 @@ function EventFull() {
           <span><strong>{getAgeAtEvent(new Date())}</strong> Current Age</span>
           <span><strong>{events.filter(e => e.importance >= 8).length}</strong> Major Milestones</span>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowBackgroundPicker(true)}
-          className="absolute right-4 top-1/2 -translate-y-1/2 px-3 py-1.5 border border-white/60 rounded text-white text-sm hover:bg-white/10"
-          title="Change background"
-        >
-          Background
-        </button>
       </div>
 
       {/* Add/Edit Event Form */}
@@ -1636,6 +1960,7 @@ function EventFull() {
           onClose={() => setShowAddForm(false)}
           onSave={addEvent}
           onOpenGallery={(formDataLike, idx) => openEventGallery(formDataLike, idx)}
+          allCategories={allCategories}
         />
       )}
       {editingEvent && (
@@ -1646,6 +1971,7 @@ function EventFull() {
           onSave={saveEditedEvent}
           onDelete={deleteEvent}
           onOpenGallery={(formDataLike, idx) => openEventGallery(formDataLike, idx)}
+          allCategories={allCategories}
         />
       )}
 
@@ -1666,6 +1992,7 @@ function EventFull() {
           onToggleCategory={toggleCategory}
           onSelectAll={selectAllCategories}
           onClose={() => setShowAllPhotos(false)}
+          allCategories={allCategories}
         />
       )}
 
@@ -1677,6 +2004,7 @@ function EventFull() {
           onToggleCategory={toggleCategory}
           onSelectAll={selectAllCategories}
           onClose={() => setShowAllJournals(false)}
+          allCategories={allCategories}
         />
       )}
 
@@ -1687,6 +2015,16 @@ function EventFull() {
           onSelect={(url) => setBackgroundUrl(url)}
           onClear={() => setBackgroundUrl('')}
           onClose={() => setShowBackgroundPicker(false)}
+        />
+      )}
+
+      {/* Settings Modal */}
+      {showSettings && (
+        <SettingsModal
+          currentBackground={backgroundUrl}
+          onSelectBackground={(url) => setBackgroundUrl(url)}
+          onClearBackground={() => setBackgroundUrl('')}
+          onClose={() => setShowSettings(false)}
         />
       )}
     </div>
