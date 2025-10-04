@@ -1503,7 +1503,7 @@ function EventFull() {
   const timelineRef = useRef(null);
   
   // Load custom categories from localStorage
-  const [customCategories, setCustomCategories] = useState(() => {
+  const [customCategories] = useState(() => {
     try { 
       const saved = localStorage.getItem('eventfull:customCategories');
       return saved ? JSON.parse(saved) : {}; 
