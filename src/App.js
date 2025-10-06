@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Plus, ZoomIn, ZoomOut, Calendar, Heart, GraduationCap, Briefcase, Baby, Star, X, Camera, ChevronLeft, ChevronRight, Images, BookOpen, Settings, ChevronDown } from 'lucide-react';
 // Optional AI import (safe to remove)
-import { classifyPhotos } from './ai/PhotoClassifier';
+// import { classifyPhotos } from './ai/PhotoClassifier';
 
 // [Then all your EventFull component code...]
 
@@ -831,7 +831,7 @@ function EventGallery({ event, startIndex = 0, onClose }) {
 
 function AllPhotosModal({ events, selectedCategories, onClose, onToggleCategory, onSelectAll, allCategories }) {
   // Session-local uploads added in the Photos modal
-  const [uploadedPhotos, setUploadedPhotos] = useState([]); // {id, url, name, category}
+  const [uploadedPhotos] = useState([]); // {id, url, name, category}
   const contentRef = useRef(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
 
@@ -851,7 +851,7 @@ function AllPhotosModal({ events, selectedCategories, onClose, onToggleCategory,
     } else if (selectedIdx < 0 || selectedIdx >= allPhotos.length) {
       setSelectedIdx(0);
     }
-  }, [allPhotos.length]);
+  }, [allPhotos.length, selectedIdx]);
   const selectPrev = () => setSelectedIdx((i) => (i - 1 + allPhotos.length) % allPhotos.length);
   const selectNext = () => setSelectedIdx((i) => (i + 1) % allPhotos.length);
 
@@ -862,36 +862,6 @@ function AllPhotosModal({ events, selectedCategories, onClose, onToggleCategory,
   const lbNext = () => setLightboxIdx((i) => (i + 1) % allPhotos.length);
 
   // Event Photos modal does not include Manage Photos/AI
-
-  const handleFiles = (fileList) => {
-    const files = Array.from(fileList || []);
-    if (files.length === 0) return;
-    const readers = files
-      .filter((f) => f.type.startsWith('image/'))
-      .map((file) => new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (ev) => resolve({ id: `${Date.now()}-${file.name}`,
-          url: ev.target.result, name: file.name, category: 'milestone' });
-        reader.readAsDataURL(file);
-      }));
-    Promise.all(readers).then((items) => {
-      setUploadedPhotos((prev) => [...prev, ...items]);
-    });
-  };
-
-  const onDrop = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    handleFiles(e.dataTransfer.files);
-  };
-
-  const onDragOver = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
-  const removeUploaded = (id) => setUploadedPhotos((prev) => prev.filter((p) => p.id !== id));
-  const clearUploads = () => setUploadedPhotos([]);
 
   // Track scroll to toggle back-to-top button
   useEffect(() => {
