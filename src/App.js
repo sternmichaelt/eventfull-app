@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, ZoomIn, ZoomOut, Calendar, Heart, GraduationCap, Briefcase, Baby, Star, X, Camera, ChevronLeft, ChevronRight, Images, BookOpen, Settings } from 'lucide-react';
+import { Plus, ZoomIn, ZoomOut, Calendar, Heart, GraduationCap, Briefcase, Baby, Star, X, Camera, ChevronLeft, ChevronRight, Images, BookOpen, Settings, ChevronDown } from 'lucide-react';
 // Optional AI import (safe to remove)
 import { classifyPhotos } from './ai/PhotoClassifier';
 
@@ -220,6 +220,10 @@ function BackgroundModal({ current, onSelect, onClear, onClose }) {
 
 function SettingsModal({ currentBackground, onSelectBackground, onClearBackground, onClose }) {
   const [activeTab, setActiveTab] = useState('background');
+  // Background upload (settings)
+  const [bgUploadPreview, setBgUploadPreview] = useState(null);
+  const [bgUploadError, setBgUploadError] = useState('');
+  const bgFileInputRef = useRef(null);
   const [customCategories, setCustomCategories] = useState(() => {
     try { 
       const saved = localStorage.getItem('eventfull:customCategories');
@@ -254,6 +258,47 @@ function SettingsModal({ currentBackground, onSelectBackground, onClearBackgroun
   const allCategories = getAllCategories();
   const totalCategories = Object.keys(allCategories).length;
   const canAddMore = totalCategories < 10;
+
+  // Background upload handlers (compact, mirrors BackgroundModal validation)
+  const handleBgUpload = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setBgUploadError('Please select an image file (JPG, PNG, WebP)');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setBgUploadError('File too large. Please select an image under 10MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const { width, height } = img;
+        const aspectRatio = width / height;
+        let guidance = '';
+        if (width < 1200 || height < 800) {
+          guidance = `Image is ${width}×${height}. Use at least 1920×1080 for best results.`;
+        } else if (aspectRatio < 1.5 || aspectRatio > 2.5) {
+          guidance = `Aspect ratio is ${aspectRatio.toFixed(1)}:1. Landscape works best (≈16:9).`;
+        }
+        setBgUploadPreview({ url: ev.target.result, width, height, guidance });
+        setBgUploadError('');
+      };
+      img.onerror = () => setBgUploadError('Unable to load image. Please try another file.');
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const applyBgUpload = () => {
+    if (bgUploadPreview) {
+      onSelectBackground(bgUploadPreview.url);
+      setBgUploadPreview(null);
+      if (bgFileInputRef.current) bgFileInputRef.current.value = '';
+    }
+  };
 
   const saveCustomCategory = (key, label, baseCategory = 'milestone') => {
     setCustomCategories(prev => ({
@@ -356,6 +401,55 @@ function SettingsModal({ currentBackground, onSelectBackground, onClearBackgroun
                   ))}
                 </div>
                 
+                {/* Upload Your Own (compact) */}
+                <div className="mt-4 border-t pt-4">
+                  <h5 className="font-medium text-gray-900 mb-2">Upload Your Own</h5>
+                  <div 
+                    onClick={() => bgFileInputRef.current?.click()}
+                    className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:border-blue-400 transition-colors"
+                  >
+                    {bgUploadPreview ? (
+                      <div className="space-y-2">
+                        <img src={bgUploadPreview.url} alt="Preview" className="max-h-32 mx-auto rounded shadow-sm" />
+                        <div className="text-xs text-gray-600">{bgUploadPreview.width} × {bgUploadPreview.height}</div>
+                        {bgUploadPreview.guidance && (
+                          <div className="text-xs text-amber-600 bg-amber-50 p-2 rounded">{bgUploadPreview.guidance}</div>
+                        )}
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="text-gray-400 mb-1">
+                          <svg className="w-10 h-10 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                          </svg>
+                        </div>
+                        <p className="text-sm text-gray-600">Click to upload an image</p>
+                        <p className="text-xs text-gray-400 mt-1">JPG, PNG, or WebP • up to 10MB</p>
+                      </div>
+                    )}
+                  </div>
+                  <input
+                    ref={bgFileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={handleBgUpload}
+                    className="hidden"
+                  />
+                  {bgUploadError && (
+                    <div className="text-xs text-red-600 bg-red-50 p-2 rounded mt-2">{bgUploadError}</div>
+                  )}
+                  {bgUploadPreview && (
+                    <div className="flex gap-2 mt-2">
+                      <button type="button" onClick={applyBgUpload} className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">Use This Background</button>
+                      <button 
+                        type="button"
+                        onClick={() => { setBgUploadPreview(null); setBgUploadError(''); if (bgFileInputRef.current) bgFileInputRef.current.value=''; }}
+                        className="px-3 py-1.5 border border-gray-300 rounded text-sm hover:bg-gray-50"
+                      >Choose Different</button>
+                    </div>
+                  )}
+                </div>
+
                 <div className="mt-3 flex gap-2">
                   <button
                     type="button"
@@ -736,26 +830,30 @@ function EventGallery({ event, startIndex = 0, onClose }) {
 }
 
 function AllPhotosModal({ events, selectedCategories, onClose, onToggleCategory, onSelectAll, allCategories }) {
-  const allPhotos = events.flatMap((e) => {
+  // Session-local uploads added in the Photos modal
+  const [uploadedPhotos, setUploadedPhotos] = useState([]); // {id, url, name, category}
+  const contentRef = useRef(null);
+  const [showBackToTop, setShowBackToTop] = useState(false);
+
+  const basePhotos = events.flatMap((e) => {
     const photos = [];
     if (e.image) photos.push({ id: `${e.id}-main`, url: e.image, name: e.title || 'Image', eventId: e.id, category: e.category });
     (e.images || []).forEach((img) => photos.push({ ...img, eventId: e.id, category: e.category }));
     return photos;
-  }).filter(p => selectedCategories.has(p.category));
+  });
+  const allPhotos = [...basePhotos, ...uploadedPhotos].filter(p => selectedCategories.has(p.category));
 
-  const [startIdx, setStartIdx] = useState(0);
-  const visible = allPhotos.slice(startIdx, startIdx + 3);
-  const canSlide = allPhotos.length > 3;
-
-  const slidePrev = () => {
-    if (!canSlide) return;
-    setStartIdx((idx) => (idx - 1 + allPhotos.length) % allPhotos.length);
-  };
-
-  const slideNext = () => {
-    if (!canSlide) return;
-    setStartIdx((idx) => (idx + 1) % allPhotos.length);
-  };
+  const [selectedIdx, setSelectedIdx] = useState(0);
+  // Keep selected index in range as photos/filters change
+  useEffect(() => {
+    if (allPhotos.length === 0) {
+      setSelectedIdx(0);
+    } else if (selectedIdx < 0 || selectedIdx >= allPhotos.length) {
+      setSelectedIdx(0);
+    }
+  }, [allPhotos.length]);
+  const selectPrev = () => setSelectedIdx((i) => (i - 1 + allPhotos.length) % allPhotos.length);
+  const selectNext = () => setSelectedIdx((i) => (i + 1) % allPhotos.length);
 
   const [lightboxIdx, setLightboxIdx] = useState(null);
   const openLightbox = (absoluteIdx) => setLightboxIdx(absoluteIdx);
@@ -763,182 +861,147 @@ function AllPhotosModal({ events, selectedCategories, onClose, onToggleCategory,
   const lbPrev = () => setLightboxIdx((i) => (i - 1 + allPhotos.length) % allPhotos.length);
   const lbNext = () => setLightboxIdx((i) => (i + 1) % allPhotos.length);
 
-  // AI Assist state (optional)
-  const [showAI, setShowAI] = useState(false);
-  const [prompt, setPrompt] = useState('Group photos by the most likely matching event.');
-  const [aiLoading, setAiLoading] = useState(false);
-  const [suggestions, setSuggestions] = useState([]);
-  const [applied, setApplied] = useState([]); // store applied suggestion ids for simple undo
+  // Event Photos modal does not include Manage Photos/AI
 
-  const runAI = async () => {
-    setAiLoading(true);
-    try {
-      const evs = events.map(e => ({ id: e.id, title: e.title, date: e.date, category: e.category }));
-      const res = await classifyPhotos(allPhotos, evs, prompt);
-      setSuggestions(res.suggestions || []);
-    } finally {
-      setAiLoading(false);
-    }
+  const handleFiles = (fileList) => {
+    const files = Array.from(fileList || []);
+    if (files.length === 0) return;
+    const readers = files
+      .filter((f) => f.type.startsWith('image/'))
+      .map((file) => new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => resolve({ id: `${Date.now()}-${file.name}`,
+          url: ev.target.result, name: file.name, category: 'milestone' });
+        reader.readAsDataURL(file);
+      }));
+    Promise.all(readers).then((items) => {
+      setUploadedPhotos((prev) => [...prev, ...items]);
+    });
   };
 
-  const applySuggestion = (s) => {
-    // Let parent keep data immutable; here we only annotate UI state.
-    setApplied((prev) => [...prev, `${s.photoId}->${s.toEventId}`]);
+  const onDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    handleFiles(e.dataTransfer.files);
   };
 
-  const undoSuggestion = (s) => {
-    setApplied((prev) => prev.filter(id => id !== `${s.photoId}->${s.toEventId}`));
+  const onDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
   };
+
+  const removeUploaded = (id) => setUploadedPhotos((prev) => prev.filter((p) => p.id !== id));
+  const clearUploads = () => setUploadedPhotos([]);
+
+  // Track scroll to toggle back-to-top button
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const onScroll = () => setShowBackToTop(el.scrollTop > 300);
+    el.addEventListener('scroll', onScroll);
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
+
+  const scrollToTop = () => {
+    const el = contentRef.current;
+    if (el) el.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Removed AI actions (run/apply/undo) from Event Photos modal
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-screen-2xl overflow-hidden">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-screen-2xl max-h-[90vh] overflow-hidden flex flex-col">
         <div className="flex items-center justify-between p-4 border-b">
           <div className="flex items-center gap-3">
             <Images className="w-5 h-5 text-gray-700" />
-            <h3 className="text-lg font-semibold text-gray-900">Your Photos</h3>
+            <h3 className="text-lg font-semibold text-gray-900">Event Photos</h3>
           </div>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
             <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="p-4">
+        <div ref={contentRef} className="flex-1 overflow-y-auto p-4 relative">
           <div className="flex flex-wrap gap-2 mb-4 items-start">
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={onSelectAll}
-                className="px-3 py-1 rounded-full border border-gray-300 bg-white text-sm text-gray-700 hover:bg-gray-50"
-                title="Select all categories"
-              >
-                Select All
-              </button>
-              {Object.entries(allCategories).map(([key, config]) => {
-                const active = selectedCategories.has(key);
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => onToggleCategory(key)}
-                    className={`px-3 py-1 rounded-full border text-sm ${active ? 'border-gray-300 bg-white' : 'border-gray-200 bg-gray-50 opacity-70'}`}
-                  >
-                    {config.label}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="ml-auto flex items-center gap-2">
-              <button type="button" onClick={() => setShowAI(v => !v)} className="px-3 py-1.5 border rounded text-sm">
-                {showAI ? 'Hide AI Assist' : 'AI Assist'}
-              </button>
-            </div>
-          </div>
-
-          {showAI && (
-            <div className="mb-4 border rounded p-3 bg-gray-50">
-              <div className="text-sm font-medium text-gray-800 mb-2">AI Assist (Beta)</div>
-              <div className="flex flex-wrap items-center gap-2 mb-2">
-                <input
-                  type="text"
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  className="flex-1 min-w-[240px] px-3 py-2 border rounded text-sm"
-                  placeholder="Describe how to group photos..."
-                />
-                <button type="button" onClick={runAI} disabled={aiLoading} className="px-3 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
-                  {aiLoading ? 'Analyzing…' : 'Run'}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={onSelectAll}
+                  className="px-3 py-1 rounded-full border border-gray-300 bg-white text-sm text-gray-700 hover:bg-gray-50"
+                  title="Select all categories"
+                >
+                  Select All
                 </button>
+                {Object.entries(allCategories).map(([key, config]) => {
+                  const active = selectedCategories.has(key);
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => onToggleCategory(key)}
+                      className={`px-3 py-1 rounded-full border text-sm ${active ? 'border-gray-300 bg-white' : 'border-gray-200 bg-gray-50 opacity-70'}`}
+                    >
+                      {config.label}
+                    </button>
+                  );
+                })}
               </div>
-              {suggestions.length > 0 ? (
-                <div className="max-h-48 overflow-auto">
-                  <table className="min-w-full text-xs">
-                    <thead>
-                      <tr className="text-left text-gray-600">
-                        <th className="px-2 py-1">Photo</th>
-                        <th className="px-2 py-1">From</th>
-                        <th className="px-2 py-1">To</th>
-                        <th className="px-2 py-1">Reason</th>
-                        <th className="px-2 py-1"></th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {suggestions.map((s) => {
-                        const key = `${s.photoId}->${s.toEventId}`;
-                        const isApplied = applied.includes(key);
-                        const fromEvent = events.find(e => e.id === s.fromEventId);
-                        const toEvent = events.find(e => e.id === s.toEventId);
-                        const photo = allPhotos.find(p => p.id === s.photoId);
-                        return (
-                          <tr key={key} className="align-top">
-                            <td className="px-2 py-1">
-                              <div className="flex items-center gap-2">
-                                <img src={photo?.url} alt={photo?.name} className="w-10 h-10 object-cover rounded" />
-                                <span className="truncate max-w-[120px]" title={photo?.name}>{photo?.name}</span>
-                              </div>
-                            </td>
-                            <td className="px-2 py-1 text-gray-700">{fromEvent?.title}</td>
-                            <td className="px-2 py-1 text-gray-900 font-medium">{toEvent?.title}</td>
-                            <td className="px-2 py-1 text-gray-600">{s.reason}</td>
-                            <td className="px-2 py-1">
-                              {isApplied ? (
-                                <button type="button" onClick={() => undoSuggestion(s)} className="px-2 py-1 border rounded text-xs">Undo</button>
-                              ) : (
-                                <button type="button" onClick={() => applySuggestion(s)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs">Apply</button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              ) : aiLoading ? (
-                <div className="text-xs text-gray-600">Analyzing photos…</div>
-              ) : (
-                <div className="text-xs text-gray-600">No suggestions yet. Enter instructions and click Run.</div>
-              )}
+              <div className="ml-auto flex items-center gap-2" />
             </div>
-          )}
+
+          {/* Manage Photos was removed from this modal */}
 
           {allPhotos.length === 0 ? (
             <div className="text-sm text-gray-600">No photos for the selected filters.</div>
           ) : (
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={slidePrev}
-                disabled={!canSlide}
-                className={`p-2 rounded border ${canSlide ? 'hover:bg-gray-50 border-gray-300' : 'opacity-40 cursor-not-allowed border-gray-200'}`}
-                title="Previous"
-              >
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-
-              <div className="grid grid-cols-3 gap-3 flex-1">
-                {visible.map((p, i) => {
-                  const absoluteIndex = (startIdx + i) % allPhotos.length;
-                  return (
-                    <div key={p.id} className="bg-gray-100 rounded overflow-hidden cursor-pointer" onClick={() => openLightbox(absoluteIndex)}>
-                      <img src={p.url} alt={p.name} className="w-full h-56 object-cover" />
-                      <div className="p-2 text-xs text-gray-700">
-                        <div className="font-medium truncate" title={p.name}>{p.name}</div>
-                        <div className="text-gray-500">{allCategories[p.category]?.label || p.category}</div>
-                      </div>
-                    </div>
-                  );
-                })}
+            <div>
+              {/* Viewer */}
+              <div className="mb-4">
+                <div className="w-full h-72 bg-gray-100 rounded flex items-center justify-center overflow-hidden">
+                  {allPhotos[selectedIdx]?.url && (
+                    <img src={allPhotos[selectedIdx].url} alt={allPhotos[selectedIdx].name} className="max-h-full max-w-full object-contain" />
+                  )}
+                </div>
+                <div className="flex items-center justify-between mt-2 text-sm">
+                  <button type="button" onClick={selectPrev} className="px-3 py-1.5 border rounded">Previous</button>
+                  <div className="text-gray-600 truncate mx-2 flex-1 text-center" title={allPhotos[selectedIdx]?.name}>{allPhotos[selectedIdx]?.name || 'Photo'}</div>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => openLightbox(selectedIdx)} className="px-3 py-1.5 border rounded">Fullscreen</button>
+                    <button type="button" onClick={selectNext} className="px-3 py-1.5 border rounded">Next</button>
+                  </div>
+                </div>
               </div>
 
-              <button
-                type="button"
-                onClick={slideNext}
-                disabled={!canSlide}
-                className={`p-2 rounded border ${canSlide ? 'hover:bg-gray-50 border-gray-300' : 'opacity-40 cursor-not-allowed border-gray-200'}`}
-                title="Next"
-              >
-                <ChevronRight className="w-5 h-5" />
-              </button>
+              {/* Thumbnail grid */}
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
+                {allPhotos.map((p, i) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setSelectedIdx(i)}
+                    className={`bg-gray-100 rounded overflow-hidden cursor-pointer border ${i===selectedIdx ? 'ring-2 ring-blue-500 border-blue-500' : 'border-gray-200'}`}
+                    title={p.name}
+                  >
+                    <img src={p.url} alt={p.name} className="w-full h-32 object-cover" />
+                    <div className="p-2 text-[11px] text-gray-700 text-left">
+                      <div className="font-medium truncate" title={p.name}>{p.name}</div>
+                      <div className="text-gray-500">{allCategories[p.category]?.label || p.category}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
+          )}
+
+          {showBackToTop && (
+            <button
+              type="button"
+              onClick={scrollToTop}
+              className="absolute bottom-4 right-4 px-3 py-2 rounded-full shadow bg-white border text-gray-700 text-sm hover:bg-gray-50"
+              title="Back to top"
+            >
+              ↑ Top
+            </button>
           )}
         </div>
       </div>
@@ -960,6 +1023,75 @@ function AllPhotosModal({ events, selectedCategories, onClose, onToggleCategory,
           <button onClick={lbNext} className="absolute right-4 text-white hover:text-gray-200 p-2"><ChevronRight className="w-8 h-8" /></button>
         </div>
       )}
+    </div>
+  );
+}
+
+// New standalone Manage Photos modal (upload/view/delete)
+function ManagePhotosModal({ events, onClose }) {
+  const [uploaded, setUploaded] = useState([]); // {id,url,name}
+  const inputRef = useRef(null);
+  const contentRef = useRef(null);
+
+  const handleFiles = (files) => {
+    const arr = Array.from(files || []);
+    const readers = arr.map((file) => new Promise((resolve) => {
+      const r = new FileReader();
+      r.onload = () => resolve({ id: `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2)}`, url: r.result, name: file.name });
+      r.readAsDataURL(file);
+    }));
+    Promise.all(readers).then((items) => setUploaded((prev) => [...prev, ...items]));
+  };
+
+  const onDrop = (e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); };
+  const onDragOver = (e) => e.preventDefault();
+  const removeOne = (id) => setUploaded((prev) => prev.filter(p => p.id !== id));
+  const clearAll = () => setUploaded([]);
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-screen-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b">
+          <div className="flex items-center gap-3">
+            <Images className="w-5 h-5 text-gray-700" />
+            <h3 className="text-lg font-semibold text-gray-900">Manage Photos</h3>
+          </div>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700"><X className="w-5 h-5" /></button>
+        </div>
+        <div ref={contentRef} className="flex-1 overflow-y-auto p-4">
+          <div
+            onDrop={onDrop}
+            onDragOver={onDragOver}
+            onClick={() => inputRef.current?.click()}
+            className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-blue-400"
+          >
+            <div className="text-gray-600">Drag & drop photos here, or click to select</div>
+            <div className="text-xs text-gray-400 mt-1">JPG, PNG, WebP. Many files supported.</div>
+            <input ref={inputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
+          </div>
+
+          {uploaded.length > 0 && (
+            <div className="mt-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-sm text-gray-700">Uploaded this session: {uploaded.length}</div>
+                <button type="button" onClick={clearAll} className="text-xs px-2 py-1 border rounded">Clear All</button>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                {uploaded.map((p) => (
+                  <div key={p.id} className="relative group">
+                    <img src={p.url} alt={p.name} className="w-full h-28 object-cover rounded" />
+                    <div className="absolute inset-x-0 bottom-0 bg-black/50 text-white text-[11px] px-1 py-0.5 truncate">{p.name}</div>
+                    <button type="button" onClick={() => removeOne(p.id)} className="absolute top-1 right-1 hidden group-hover:block text-[10px] px-1.5 py-0.5 bg-white/90 border rounded">Delete</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="p-3 border-t bg-gray-50 text-right">
+          <button type="button" onClick={onClose} className="px-3 py-2 border rounded">Close</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1528,6 +1660,8 @@ function EventFull() {
   const allCategoryKeys = Object.keys(allCategories);
   const [selectedCategories, setSelectedCategories] = useState(new Set(allCategoryKeys));
   const [showAllPhotos, setShowAllPhotos] = useState(false);
+  const [photosMenuOpen, setPhotosMenuOpen] = useState(false);
+  const [showManagePhotos, setShowManagePhotos] = useState(false);
   const [showAllJournals, setShowAllJournals] = useState(false);
   const [galleryForEvent, setGalleryForEvent] = useState(null);
   const [galleryStartIndex, setGalleryStartIndex] = useState(0);
@@ -1643,14 +1777,36 @@ function EventFull() {
           </div>
           
           <div className="flex items-center gap-3">
-            <button 
-              onClick={() => setShowAllPhotos(true)}
-              className="border border-gray-300 text-gray-700 px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50"
-              title="View all photos"
-            >
-              <Images className="w-4 h-4" />
-              Photos
-            </button>
+            {/* Photos dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setPhotosMenuOpen((v) => !v)}
+                className="border border-gray-300 text-gray-700 px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50"
+                title="Photos"
+              >
+                <Images className="w-4 h-4" />
+                Photos
+                <ChevronDown className="w-4 h-4" />
+              </button>
+              {photosMenuOpen && (
+                <div className="absolute right-0 mt-1 w-44 bg-white border rounded-md shadow-lg z-10">
+                  <button
+                    type="button"
+                    onClick={() => { setShowAllPhotos(true); setPhotosMenuOpen(false); }}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                  >
+                    Event Photos
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setShowManagePhotos(true); setPhotosMenuOpen(false); }}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                  >
+                    Manage Photos
+                  </button>
+                </div>
+              )}
+            </div>
             <button 
               onClick={() => setShowAllJournals(true)}
               className="border border-gray-300 text-gray-700 px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50"
@@ -1995,6 +2151,14 @@ function EventFull() {
           allCategories={allCategories}
         />
       )}
+
+  {/* Manage Photos Modal */}
+  {showManagePhotos && (
+    <ManagePhotosModal
+      events={events}
+      onClose={() => setShowManagePhotos(false)}
+    />
+  )}
 
       {/* All Journals Modal */}
       {showAllJournals && (
