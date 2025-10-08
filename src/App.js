@@ -2,6 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Plus, ZoomIn, ZoomOut, Calendar, Heart, GraduationCap, Briefcase, Baby, Star, X, Camera, ChevronLeft, ChevronRight, Images, BookOpen, Settings, ChevronDown } from 'lucide-react';
 // Optional AI import (safe to remove)
 // import { classifyPhotos } from './ai/PhotoClassifier';
+import { fetchEvents as fetchEventsFromDb, createEvent as createEventInDb, updateEvent as updateEventInDb, deleteEvent as deleteEventInDb } from './api/events';
+import { fetchPhotosForEvent, addPhotoRow } from './api/photos';
+import { uploadToBucket } from './api/storage';
 
 // [Then all your EventFull component code...]
 
@@ -612,7 +615,8 @@ function SettingsModal({ currentBackground, onSelectBackground, onClearBackgroun
   );
 }
 
-// Sample life events data
+// Sample life events data (kept for reference)
+// eslint-disable-next-line no-unused-vars
 const sampleEvents = [
   {
     id: 1,
@@ -1007,7 +1011,7 @@ function ManagePhotosModal({ events, onClose }) {
     const arr = Array.from(files || []);
     const readers = arr.map((file) => new Promise((resolve) => {
       const r = new FileReader();
-      r.onload = () => resolve({ id: `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2)}`, url: r.result, name: file.name });
+      r.onload = () => resolve({ id: `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2)}`, url: r.result, name: file.name, file });
       r.readAsDataURL(file);
     }));
     Promise.all(readers).then((items) => setUploaded((prev) => [...prev, ...items]));
@@ -1051,7 +1055,26 @@ function ManagePhotosModal({ events, onClose }) {
                   <div key={p.id} className="relative group">
                     <img src={p.url} alt={p.name} className="w-full h-28 object-cover rounded" />
                     <div className="absolute inset-x-0 bottom-0 bg-black/50 text-white text-[11px] px-1 py-0.5 truncate">{p.name}</div>
-                    <button type="button" onClick={() => removeOne(p.id)} className="absolute top-1 right-1 hidden group-hover:block text-[10px] px-1.5 py-0.5 bg-white/90 border rounded">Delete</button>
+                    <div className="absolute top-1 right-1 hidden group-hover:flex gap-1">
+                      <button type="button" onClick={() => removeOne(p.id)} className="text-[10px] px-1.5 py-0.5 bg-white/90 border rounded">Remove</button>
+                      {/* Minimal save-to-DB action: saves under the first event if available */}
+                      {events[0] && (
+                        <button
+                          type="button"
+                          className="text-[10px] px-1.5 py-0.5 bg-blue-600 text-white rounded"
+                          onClick={async () => {
+                            try {
+                              const { publicUrl } = await uploadToBucket(events[0].id, p.file);
+                              await addPhotoRow({ eventId: events[0].id, name: p.name, url: publicUrl });
+                            } catch (e) {
+                              console.error('Upload/save failed', e);
+                            }
+                          }}
+                        >
+                          Save
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1597,7 +1620,7 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
 }
 
 function EventFull() {
-  const [events, setEvents] = useState(sampleEvents);
+  const [events, setEvents] = useState([]);
   const [zoom, setZoom] = useState(1);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -1640,6 +1663,40 @@ function EventFull() {
   const [backgroundUrl, setBackgroundUrl] = useState(() => {
     try { return localStorage.getItem('eventfull:bg') || ''; } catch { return ''; }
   });
+
+  // Load events from Supabase on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const rows = await fetchEventsFromDb();
+        // Map DB rows to existing shape used in UI
+        let mapped = (rows || []).map((r) => ({
+          id: r.id,
+          title: r.title,
+          description: r.description || '',
+          date: new Date(r.date),
+          category: r.category || 'milestone',
+          image: r.image_url || null,
+          images: [],
+          importance: 6,
+          journals: []
+        }));
+        // Load photos per event and attach to images
+        mapped = await Promise.all(mapped.map(async (ev) => {
+          try {
+            const photos = await fetchPhotosForEvent(ev.id);
+            const images = (photos || []).map(p => ({ id: p.id, url: p.url, name: p.name }));
+            return { ...ev, images };
+          } catch {
+            return ev;
+          }
+        }));
+        setEvents(mapped);
+      } catch (e) {
+        console.error('Failed to load events', e);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     try {
@@ -1714,16 +1771,55 @@ function EventFull() {
     return age;
   };
 
-  const addEvent = (newEvent) => {
-    setEvents([...events, newEvent]);
+  const addEvent = async (newEvent) => {
+    try {
+      const saved = await createEventInDb({
+        title: newEvent.title,
+        description: newEvent.description,
+        date: newEvent.date.toISOString().slice(0,10),
+        category: newEvent.category,
+        image_url: newEvent.image || null,
+      });
+      const mapped = {
+        id: saved.id,
+        title: saved.title,
+        description: saved.description || '',
+        date: new Date(saved.date),
+        category: saved.category,
+        image: saved.image_url || null,
+        images: [],
+        importance: newEvent.importance ?? 6,
+        journals: []
+      };
+      setEvents((prev) => [...prev, mapped]);
+    } catch (e) {
+      console.error('Failed to create event', e);
+    }
   };
 
-  const saveEditedEvent = (updatedEvent) => {
-    setEvents(events.map(e => (e.id === updatedEvent.id ? updatedEvent : e)));
+  const saveEditedEvent = async (updatedEvent) => {
+    try {
+      const saved = await updateEventInDb(updatedEvent.id, {
+        title: updatedEvent.title,
+        description: updatedEvent.description,
+        date: updatedEvent.date.toISOString().slice(0,10),
+        category: updatedEvent.category,
+        image_url: updatedEvent.image || null,
+      });
+      const mapped = { ...updatedEvent, image: saved.image_url || updatedEvent.image };
+      setEvents((prev) => prev.map(e => (e.id === updatedEvent.id ? mapped : e)));
+    } catch (e) {
+      console.error('Failed to update event', e);
+    }
   };
 
-  const deleteEvent = (eventToDelete) => {
-    setEvents(events.filter(e => e.id !== eventToDelete.id));
+  const deleteEvent = async (eventToDelete) => {
+    try {
+      await deleteEventInDb(eventToDelete.id);
+      setEvents((prev) => prev.filter(e => e.id !== eventToDelete.id));
+    } catch (e) {
+      console.error('Failed to delete event', e);
+    }
   };
 
   const openEventGallery = (formDataLike, startIndex) => {
