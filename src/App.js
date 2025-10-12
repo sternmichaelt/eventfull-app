@@ -897,31 +897,31 @@ function AllPhotosModal({ events, selectedCategories, onClose, onToggleCategory,
         </div>
         <div ref={contentRef} className="flex-1 overflow-y-auto p-4 relative">
           <div className="flex flex-wrap gap-2 mb-4 items-start">
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={onSelectAll}
-                  className="px-3 py-1 rounded-full border border-gray-300 bg-white text-sm text-gray-700 hover:bg-gray-50"
-                  title="Select all categories"
-                >
-                  Select All
-                </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={onSelectAll}
+                className="px-3 py-1 rounded-full border border-gray-300 bg-white text-sm text-gray-700 hover:bg-gray-50"
+                title="Select all categories"
+              >
+                Select All
+              </button>
                 {Object.entries(allCategories).map(([key, config]) => {
-                  const active = selectedCategories.has(key);
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => onToggleCategory(key)}
-                      className={`px-3 py-1 rounded-full border text-sm ${active ? 'border-gray-300 bg-white' : 'border-gray-200 bg-gray-50 opacity-70'}`}
-                    >
-                      {config.label}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="ml-auto flex items-center gap-2" />
+                const active = selectedCategories.has(key);
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => onToggleCategory(key)}
+                    className={`px-3 py-1 rounded-full border text-sm ${active ? 'border-gray-300 bg-white' : 'border-gray-200 bg-gray-50 opacity-70'}`}
+                  >
+                    {config.label}
+                  </button>
+                );
+              })}
             </div>
+              <div className="ml-auto flex items-center gap-2" />
+          </div>
 
           {/* Manage Photos was removed from this modal */}
 
@@ -942,40 +942,40 @@ function AllPhotosModal({ events, selectedCategories, onClose, onToggleCategory,
                   <div className="flex gap-2">
                     <button type="button" onClick={() => openLightbox(selectedIdx)} className="px-3 py-1.5 border rounded">Fullscreen</button>
                     <button type="button" onClick={selectNext} className="px-3 py-1.5 border rounded">Next</button>
-                  </div>
+            </div>
                 </div>
               </div>
 
               {/* Thumbnail grid */}
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
                 {allPhotos.map((p, i) => (
-                  <button
+              <button
                     key={p.id}
-                    type="button"
+                type="button"
                     onClick={() => setSelectedIdx(i)}
                     className={`bg-gray-100 rounded overflow-hidden cursor-pointer border ${i===selectedIdx ? 'ring-2 ring-blue-500 border-blue-500' : 'border-gray-200'}`}
                     title={p.name}
                   >
                     <img src={p.url} alt={p.name} className="w-full h-32 object-cover" />
                     <div className="p-2 text-[11px] text-gray-700 text-left">
-                      <div className="font-medium truncate" title={p.name}>{p.name}</div>
+                        <div className="font-medium truncate" title={p.name}>{p.name}</div>
                       <div className="text-gray-500">{allCategories[p.category]?.label || p.category}</div>
-                    </div>
+                      </div>
                   </button>
                 ))}
+                    </div>
               </div>
-            </div>
           )}
 
           {showBackToTop && (
-            <button
-              type="button"
+              <button
+                type="button"
               onClick={scrollToTop}
               className="absolute bottom-4 right-4 px-3 py-2 rounded-full shadow bg-white border text-gray-700 text-sm hover:bg-gray-50"
               title="Back to top"
             >
               ↑ Top
-            </button>
+              </button>
           )}
         </div>
       </div>
@@ -1757,12 +1757,209 @@ function EventFull() {
     );
   }
 
+  // Define functions before using them in empty state
+
+  // If no events, show timeline with empty state but allow adding events
   if (sortedEvents.length === 0) {
     return (
-      <div className="w-full h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-lg text-gray-600">No events found. Add your first event to get started!</div>
+      <div className="w-full h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex flex-col overflow-hidden relative">
+        {/* Header */}
+        <div className="bg-white/80 backdrop-blur-sm shadow-sm border-b border-gray-200 px-6 py-4 relative z-10">
+          <div className="flex justify-between items-center">
+            <div>
+              <div className="flex items-center gap-2">
+                <img src="/logo-eventfull.svg" alt="EventFull" className="w-8 h-8 md:w-10 md:h-10 lg:w-12 lg:h-12" />
+                <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold"><span className="text-blue-600">Event</span><span className="text-purple-600">Full</span></h1>
+              </div>
+              <p className="text-gray-600 mt-1">Your Life's Timeline</p>
+            </div>
+            
+            <div className="flex items-center gap-3">
+              {/* Photos dropdown */}
+              <div className="relative">
+                <button
+                  onClick={() => setPhotosMenuOpen((v) => !v)}
+                  className="border border-gray-300 text-gray-700 px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50"
+                  title="Photos"
+                >
+                  <Images className="w-4 h-4" />
+                  Photos
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+                {photosMenuOpen && (
+                  <div className="absolute right-0 mt-1 w-44 bg-white border rounded-md shadow-lg z-10">
+                    <button
+                      type="button"
+                      onClick={() => { setShowAllPhotos(true); setPhotosMenuOpen(false); }}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                    >
+                      Event Photos
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setShowManagePhotos(true); setPhotosMenuOpen(false); }}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                    >
+                      Manage Photos
+                    </button>
+                  </div>
+                )}
+              </div>
+              <button 
+                onClick={() => setShowAllJournals(true)}
+                className="border border-gray-300 text-gray-700 px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50"
+                title="View all journals"
+              >
+                <BookOpen className="w-4 h-4" />
+                Journals
+              </button>
+              <div className="bg-gray-100 rounded-lg p-1 flex gap-1">
+                <button 
+                  onClick={handleZoomOut}
+                  className="p-2 hover:bg-white rounded transition-colors"
+                  title="Zoom Out"
+                >
+                  <ZoomOut className="w-4 h-4" />
+                </button>
+                <button 
+                  onClick={handleZoomIn}
+                  className="p-2 hover:bg-white rounded transition-colors"
+                  title="Zoom In"
+                >
+                  <ZoomIn className="w-4 h-4" />
+                </button>
+              </div>
+              
+              <button 
+                onClick={() => setShowSettings(true)}
+                className="border border-gray-300 text-gray-700 px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50 transition-colors"
+                title="Settings"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+              
+              <button 
+                onClick={() => setShowAddForm(true)}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Add Event
+              </button>
+            </div>
+          </div>
         </div>
+
+        {/* Empty Timeline */}
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="text-center max-w-md">
+            <div className="text-6xl mb-4">📅</div>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">Start Your Timeline</h2>
+            <p className="text-gray-600 mb-6">Add your first life event to begin building your personal timeline.</p>
+            <button 
+              onClick={() => setShowAddForm(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 mx-auto transition-colors"
+            >
+              <Plus className="w-5 h-5" />
+              Add Your First Event
+            </button>
+          </div>
+        </div>
+
+        {/* Category Legend */}
+        <div className="bg-white border-t border-gray-200 px-6 py-4">
+          <div className="flex flex-wrap gap-4 justify-center">
+            <button
+              type="button"
+              onClick={selectAllCategories}
+              className="px-3 py-1 rounded-full border border-gray-300 bg-white text-sm text-gray-700 hover:bg-gray-50"
+              title="Select all categories"
+            >
+              Select All
+            </button>
+            <div className="ml-auto hidden" />
+            {Object.entries(allCategories).map(([key, config]) => {
+              const isActive = selectedCategories.has(key);
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => toggleCategory(key)}
+                  aria-pressed={isActive}
+                  className={`flex items-center gap-2 px-3 py-1 rounded-full border transition-colors ${
+                    isActive ? 'border-gray-300 bg-white' : 'border-gray-200 bg-gray-50 opacity-60'
+                  }`}
+                  title={isActive ? `Hide ${config.label}` : `Show ${config.label}`}
+                >
+                  <span className={`w-3 h-3 rounded-full ${config.color} inline-flex items-center justify-center`}>
+                    <config.icon className="w-2 h-2 text-white" />
+                  </span>
+                  <span className="text-sm text-gray-700">{config.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Stats Summary */}
+        <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3">
+          <div className="flex justify-center gap-8 text-sm">
+            <span><strong>0</strong> Shown</span>
+            <span><strong>0</strong> Total</span>
+            <span><strong>0</strong> Years Covered</span>
+            <span><strong>0</strong> Current Age</span>
+            <span><strong>0</strong> Major Milestones</span>
+          </div>
+        </div>
+
+        {/* Add Event Form */}
+        {showAddForm && (
+          <EventForm 
+            mode="add"
+            onClose={() => setShowAddForm(false)}
+            onSave={addEvent}
+            onOpenGallery={(formDataLike, idx) => openEventGallery(formDataLike, idx)}
+            allCategories={allCategories}
+          />
+        )}
+
+        {/* Other modals */}
+        {showAllPhotos && (
+          <AllPhotosModal
+            events={events}
+            selectedCategories={selectedCategories}
+            onToggleCategory={toggleCategory}
+            onSelectAll={selectAllCategories}
+            onClose={() => setShowAllPhotos(false)}
+            allCategories={allCategories}
+          />
+        )}
+
+        {showManagePhotos && (
+          <ManagePhotosModal
+            events={events}
+            onClose={() => setShowManagePhotos(false)}
+          />
+        )}
+
+        {showAllJournals && (
+          <AllJournalsModal
+            events={events}
+            selectedCategories={selectedCategories}
+            onToggleCategory={toggleCategory}
+            onSelectAll={selectAllCategories}
+            onClose={() => setShowAllJournals(false)}
+            allCategories={allCategories}
+          />
+        )}
+
+        {showSettings && (
+          <SettingsModal
+            currentBackground={backgroundUrl}
+            onSelectBackground={(url) => setBackgroundUrl(url)}
+            onClearBackground={() => setBackgroundUrl('')}
+            onClose={() => setShowSettings(false)}
+          />
+        )}
       </div>
     );
   }
@@ -1904,15 +2101,15 @@ function EventFull() {
           <div className="flex items-center gap-3">
             {/* Photos dropdown */}
             <div className="relative">
-              <button
+            <button 
                 onClick={() => setPhotosMenuOpen((v) => !v)}
-                className="border border-gray-300 text-gray-700 px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50"
+              className="border border-gray-300 text-gray-700 px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50"
                 title="Photos"
-              >
-                <Images className="w-4 h-4" />
-                Photos
+            >
+              <Images className="w-4 h-4" />
+              Photos
                 <ChevronDown className="w-4 h-4" />
-              </button>
+            </button>
               {photosMenuOpen && (
                 <div className="absolute right-0 mt-1 w-44 bg-white border rounded-md shadow-lg z-10">
                   <button
@@ -2282,8 +2479,8 @@ function EventFull() {
     <ManagePhotosModal
       events={events}
       onClose={() => setShowManagePhotos(false)}
-    />
-  )}
+        />
+      )}
 
       {/* All Journals Modal */}
       {showAllJournals && (
