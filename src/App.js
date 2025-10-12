@@ -1621,6 +1621,8 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
 
 function EventFull() {
   const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [zoom, setZoom] = useState(1);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -1668,6 +1670,8 @@ function EventFull() {
   useEffect(() => {
     (async () => {
       try {
+        setLoading(true);
+        setError(null);
         const rows = await fetchEventsFromDb();
         // Map DB rows to existing shape used in UI
         let mapped = (rows || []).map((r) => ({
@@ -1692,8 +1696,25 @@ function EventFull() {
           }
         }));
         setEvents(mapped);
+        setLoading(false);
       } catch (e) {
         console.error('Failed to load events', e);
+        setError(e.message);
+        setLoading(false);
+        // Fallback to sample data if Supabase fails
+        setEvents([
+          {
+            id: 'fallback-1',
+            title: 'Welcome to EventFull',
+            description: 'Your timeline will appear here once events are added.',
+            date: new Date(),
+            category: 'milestone',
+            image: null,
+            images: [],
+            importance: 8,
+            journals: []
+          }
+        ]);
       }
     })();
   }, []);
@@ -1708,11 +1729,49 @@ function EventFull() {
   const sortedEvents = [...events].sort((a, b) => a.date.getTime() - b.date.getTime());
   const filteredEvents = sortedEvents.filter(e => selectedCategories.has(e.category));
 
-  // Calculate timeline span
+  // Show loading/error states
+  if (loading) {
+    return (
+      <div className="w-full h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-lg text-gray-600">Loading your timeline...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="w-full h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-lg text-red-600 mb-2">Failed to load events</div>
+          <div className="text-sm text-gray-600 mb-4">{error}</div>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (sortedEvents.length === 0) {
+    return (
+      <div className="w-full h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-lg text-gray-600">No events found. Add your first event to get started!</div>
+        </div>
+      </div>
+    );
+  }
+
+  // Calculate timeline span (with safety checks)
   const firstEvent = sortedEvents[0];
   const lastEvent = sortedEvents[sortedEvents.length - 1];
-  const startYear = firstEvent.date.getFullYear();
-  const endYear = lastEvent.date.getFullYear();
+  const startYear = firstEvent?.date?.getFullYear() || new Date().getFullYear();
+  const endYear = lastEvent?.date?.getFullYear() || new Date().getFullYear();
   const totalYears = endYear - startYear + 1;
 
   const toggleCategory = (key) => {
