@@ -1271,7 +1271,8 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
     importance: initialEvent?.importance ?? 5,
     image: initialEvent?.image || null,
     images: initialEvent?.images || [],
-    journals: initialEvent?.journals || []
+    journals: initialEvent?.journals || [],
+    recordings: initialEvent?.recordings || []
   });
   const [imagePreview, setImagePreview] = useState(initialEvent?.image || null);
   const fileInputRef = useRef(null);
@@ -1280,6 +1281,75 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
   // Journal local draft
   const [journalDraft, setJournalDraft] = useState({ title: '', content: '' });
   const [editingJournalId, setEditingJournalId] = useState(null);
+
+  // Voice recording state
+  const [recordings, setRecordings] = useState(initialEvent?.recordings || []);
+  const [isRecording, setIsRecording] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState(null);
+  const [recordingTitle, setRecordingTitle] = useState('');
+
+  // Voice recording functions
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks = [];
+
+      recorder.ondataavailable = (e) => chunks.push(e.data);
+      recorder.onstop = () => {
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        const url = URL.createObjectURL(blob);
+        const newRecording = {
+          id: `recording-${Date.now()}`,
+          title: recordingTitle || `Recording ${recordings.length + 1}`,
+          url,
+          blob,
+          duration: 0, // Could calculate actual duration
+          createdAt: new Date()
+        };
+        setRecordings(prev => [...prev, newRecording]);
+        setRecordingTitle('');
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      recorder.start();
+      setMediaRecorder(recorder);
+      setIsRecording(true);
+    } catch (error) {
+      console.error('Error starting recording:', error);
+      alert('Could not access microphone. Please check permissions.');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorder && isRecording) {
+      mediaRecorder.stop();
+      setIsRecording(false);
+      setMediaRecorder(null);
+    }
+  };
+
+  const deleteRecording = (id) => {
+    const recording = recordings.find(r => r.id === id);
+    if (recording) {
+      URL.revokeObjectURL(recording.url);
+    }
+    setRecordings(prev => prev.filter(r => r.id !== id));
+  };
+
+  const updateJournal = (id, changes) => {
+    setFormData(prev => ({
+      ...prev,
+      journals: (prev.journals || []).map(j => j.id === id ? { ...j, ...changes } : j)
+    }));
+  };
+
+  const removeJournal = (id) => {
+    setFormData(prev => ({
+      ...prev,
+      journals: (prev.journals || []).filter(j => j.id !== id)
+    }));
+  };
 
   const addJournal = () => {
     const hasDraft = journalDraft.content.trim().length > 0 || journalDraft.title.trim().length > 0;
@@ -1302,20 +1372,6 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
     setJournalDraft({ title: '', content: '' });
     // Open the newly added entry in edit mode if it was empty draft
     setEditingJournalId(newId);
-  };
-
-  const updateJournal = (id, updates) => {
-    setFormData((prev) => ({
-      ...prev,
-      journals: (prev.journals || []).map(j => j.id === id ? { ...j, ...updates } : j)
-    }));
-  };
-
-  const removeJournal = (id) => {
-    setFormData((prev) => ({
-      ...prev,
-      journals: (prev.journals || []).filter(j => j.id !== id)
-    }));
   };
 
   const handleImageUpload = (e) => {
@@ -1366,7 +1422,8 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
         date: new Date(formData.date),
         importance: parseInt(formData.importance),
         images: formData.images || [],
-        journals: formData.journals || []
+        journals: formData.journals || [],
+        recordings: recordings || []
       };
       onSave(normalized);
       onClose();
@@ -1375,54 +1432,58 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-        <div className="p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold text-gray-900">{isEdit ? 'Edit Event' : 'Add New Event'}</h2>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[95vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="flex justify-between items-center p-6 border-b">
+          <h2 className="text-2xl font-bold text-gray-900">{isEdit ? 'Edit Event' : 'Add New Event'}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X className="w-6 h-6" />
+          </button>
+        </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Title *</label>
-              <input
-                type="text"
-                value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Event title"
-                required
-              />
+        <div className="flex-1 overflow-y-auto">
+          <form onSubmit={handleSubmit} className="p-6">
+            {/* Basic Event Info */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Title *</label>
+                <input
+                  type="text"
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Event title"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Date *</label>
+                <input
+                  type="date"
+                  value={formData.date}
+                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
+                <select
+                  value={formData.category}
+                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  {Object.entries(allCategories).map(([key, config]) => (
+                    <option key={key} value={key}>{config.label}</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
-              <input
-                type="date"
-                value={formData.date}
-                onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-              <select
-                value={formData.category}
-                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                {Object.entries(allCategories).map(([key, config]) => (
-                  <option key={key} value={key}>{config.label}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <div className="mb-8">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
               <textarea
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
@@ -1432,162 +1493,211 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
               />
             </div>
 
-            {/* Main photo (kept exactly as before behavior-wise) */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Photo</label>
-              <div 
-                onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-blue-400 transition-colors"
-              >
-                {imagePreview ? (
-                  <div className="relative">
-                    <img src={imagePreview} alt="Preview" className="max-h-32 mx-auto rounded" />
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setImagePreview(null);
-                        setFormData({ ...formData, image: null });
-                      }}
-                      className="absolute top-0 right-0 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ) : (
+            {/* Three Content Sections */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+              {/* Photos Section */}
+              <div className="bg-gray-50 rounded-lg p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                    <Camera className="w-5 h-5" />
+                    Photos
+                  </h3>
+                  <span className="text-sm text-gray-500">{(formData.images || []).length + (formData.image ? 1 : 0)} items</span>
+                </div>
+                
+                <div className="space-y-4">
+                  {/* Main Photo */}
                   <div>
-                    <Camera className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                    <p className="text-sm text-gray-600">Click to upload a photo</p>
-                    <p className="text-xs text-gray-400 mt-1">JPG, PNG up to 10MB</p>
-                  </div>
-                )}
-              </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                className="hidden"
-              />
-            </div>
-
-            {/* Additional photos */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-sm font-medium text-gray-700">Additional Photos</label>
-                <button type="button" onClick={() => galleryInputRef.current?.click()} className="text-sm text-blue-600 hover:underline">Add Photos</button>
-              </div>
-              <input ref={galleryInputRef} type="file" accept="image/*" multiple onChange={handleGalleryUpload} className="hidden" />
-              {(formData.images || []).length === 0 ? (
-                <p className="text-xs text-gray-500">No additional photos yet.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {(formData.images || []).map((img, idx) => (
-                    <li key={img.id} className="flex items-center gap-2 p-2 border rounded">
-                      <img src={img.url} alt={img.name || `Photo ${idx+1}`} className="w-12 h-12 object-cover rounded cursor-pointer" onClick={() => onOpenGallery?.(formData, idx + (formData.image ? 1 : 0))} />
-                      <input
-                        type="text"
-                        value={img.name || ''}
-                        onChange={(e) => renameGalleryItem(img.id, e.target.value)}
-                        className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm"
-                        placeholder="Photo name"
-                      />
-                      <button type="button" onClick={() => removeGalleryItem(img.id)} className="text-xs text-red-600 hover:underline">Remove</button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-
-            {/* Journals */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="block text-sm font-medium text-gray-700">Journal Entries</label>
-              </div>
-              <div className="space-y-2 mb-3">
-                <input
-                  type="text"
-                  value={journalDraft.title}
-                  onChange={(e) => setJournalDraft({ ...journalDraft, title: e.target.value })}
-                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
-                  placeholder="Title (optional)"
-                />
-                <textarea
-                  value={journalDraft.content}
-                  onChange={(e) => setJournalDraft({ ...journalDraft, content: e.target.value })}
-                  className="w-full px-2 py-2 border border-gray-300 rounded text-sm"
-                  rows="3"
-                  placeholder="Write a note about this event... (or click Add Entry to start)"
-                />
-                <button type="button" onClick={addJournal} className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">Add Entry</button>
-              </div>
-
-              {(formData.journals || []).length === 0 ? (
-                <p className="text-xs text-gray-500">No journal entries yet.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {(formData.journals || []).map((j) => (
-                    <li key={j.id} className="border rounded p-2">
-                      {editingJournalId === j.id ? (
-                        <div className="space-y-2">
-                          <input
-                            type="text"
-                            value={j.title}
-                            onChange={(e) => updateJournal(j.id, { title: e.target.value })}
-                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
-                          />
-                          <textarea
-                            value={j.content}
-                            onChange={(e) => updateJournal(j.id, { content: e.target.value })}
-                            className="w-full px-2 py-2 border border-gray-300 rounded text-sm"
-                            rows="3"
-                          />
-                          <div className="flex gap-2">
-                            <button type="button" onClick={() => setEditingJournalId(null)} className="text-sm px-3 py-1 border rounded">Done</button>
-                            <button type="button" onClick={() => removeJournal(j.id)} className="text-sm px-3 py-1 border rounded text-red-600">Delete</button>
-                          </div>
-                        </div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Main Photo</label>
+                    <div 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-full h-32 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center cursor-pointer hover:border-blue-400 transition-colors"
+                    >
+                      {imagePreview ? (
+                        <img src={imagePreview} alt="Preview" className="w-full h-full object-cover rounded-lg" />
                       ) : (
-                        <div>
-                          <div className="flex justify-between items-center">
-                            <div className="font-medium text-gray-900 truncate" title={j.title || 'Journal Entry'}>{j.title || 'Journal Entry'}</div>
-                            <div className="text-xs text-gray-500">{new Date(j.createdAt).toLocaleString()}</div>
-                          </div>
-                          <div className="text-sm text-gray-700 whitespace-pre-wrap" style={{maxHeight:'4.5rem', overflow:'auto'}}>{j.content}</div>
-                          <div className="flex gap-2 mt-2">
-                            <button type="button" onClick={() => setEditingJournalId(j.id)} className="text-sm px-3 py-1 border rounded">Edit</button>
-                            <button type="button" onClick={() => removeJournal(j.id)} className="text-sm px-3 py-1 border rounded text-red-600">Delete</button>
-                          </div>
+                        <div className="text-center">
+                          <Camera className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                          <p className="text-sm text-gray-500">Click to add photo</p>
                         </div>
                       )}
-                    </li>
-                  ))}
-                </ul>
-              )}
+                    </div>
+                    <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                  </div>
+
+                  {/* Additional Photos */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-sm font-medium text-gray-700">Additional Photos</label>
+                      <button type="button" onClick={() => galleryInputRef.current?.click()} className="text-sm text-blue-600 hover:underline">Add Photos</button>
+                    </div>
+                    <input ref={galleryInputRef} type="file" accept="image/*" multiple onChange={handleGalleryUpload} className="hidden" />
+                    
+                    {(formData.images || []).length > 0 && (
+                      <div className="grid grid-cols-2 gap-2">
+                        {(formData.images || []).map((img) => (
+                          <div key={img.id} className="relative group">
+                            <img src={img.url} alt={img.name} className="w-full h-20 object-cover rounded" />
+                            <button
+                              type="button"
+                              onClick={() => removeGalleryItem(img.id)}
+                              className="absolute top-1 right-1 hidden group-hover:block text-xs px-1.5 py-0.5 bg-red-500 text-white rounded"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Journals Section */}
+              <div className="bg-gray-50 rounded-lg p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                    <BookOpen className="w-5 h-5" />
+                    Journals
+                  </h3>
+                  <span className="text-sm text-gray-500">{(formData.journals || []).length} entries</span>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Add Journal Entry */}
+                  <div className="space-y-3">
+                    <input
+                      type="text"
+                      value={journalDraft.title}
+                      onChange={(e) => setJournalDraft({ ...journalDraft, title: e.target.value })}
+                      placeholder="Journal entry title..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                    <textarea
+                      value={journalDraft.content}
+                      onChange={(e) => setJournalDraft({ ...journalDraft, content: e.target.value })}
+                      placeholder="Write your thoughts..."
+                      rows="3"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={addJournal}
+                      className="w-full px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                    >
+                      Add Journal Entry
+                    </button>
+                  </div>
+
+                  {/* Journal Entries List */}
+                  {(formData.journals || []).length > 0 && (
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {(formData.journals || []).map((journal) => (
+                        <div key={journal.id} className="bg-white p-3 rounded border">
+                          <div className="font-medium text-sm text-gray-800">{journal.title}</div>
+                          <div className="text-xs text-gray-500 mt-1">{journal.content.substring(0, 50)}...</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Voice Recordings Section */}
+              <div className="bg-gray-50 rounded-lg p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                    <div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
+                      <div className="w-2 h-2 bg-white rounded-full"></div>
+                    </div>
+                    Voice Notes
+                  </h3>
+                  <span className="text-sm text-gray-500">{recordings.length} recordings</span>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Recording Controls */}
+                  <div className="space-y-3">
+                    <input
+                      type="text"
+                      value={recordingTitle}
+                      onChange={(e) => setRecordingTitle(e.target.value)}
+                      placeholder="Recording title (optional)..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                    
+                    {!isRecording ? (
+                      <button
+                        type="button"
+                        onClick={startRecording}
+                        className="w-full px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm flex items-center justify-center gap-2"
+                      >
+                        <div className="w-3 h-3 bg-white rounded-full"></div>
+                        Start Recording
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={stopRecording}
+                        className="w-full px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm flex items-center justify-center gap-2"
+                      >
+                        <div className="w-3 h-3 bg-white rounded-full"></div>
+                        Stop Recording
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Recordings List */}
+                  {recordings.length > 0 && (
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {recordings.map((recording) => (
+                        <div key={recording.id} className="bg-white p-3 rounded border">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="font-medium text-sm text-gray-800">{recording.title}</div>
+                              <audio controls className="w-full mt-2">
+                                <source src={recording.url} type="audio/webm" />
+                              </audio>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => deleteRecording(recording.id)}
+                              className="ml-2 text-red-500 hover:text-red-700"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
 
-            <div className="flex gap-3 pt-4">
+            {/* Action Buttons */}
+            <div className="flex justify-end gap-3 pt-6 border-t">
               {isEdit && (
                 <button
                   type="button"
-                  onClick={() => { onDelete?.(initialEvent); onClose(); }}
-                  className="px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors"
+                  onClick={() => { onDelete(initialEvent); onClose(); }}
+                  className="px-4 py-2 border border-red-300 text-red-700 rounded-lg hover:bg-red-50 transition-colors"
                 >
-                  Delete
+                  Delete Event
                 </button>
               )}
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
-                {isEdit ? 'Save Changes' : 'Add Event'}
+                {isEdit ? 'Update Event' : 'Create Event'}
               </button>
             </div>
           </form>
