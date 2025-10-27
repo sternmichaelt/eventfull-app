@@ -1279,14 +1279,16 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
   const galleryInputRef = useRef(null);
 
   // Journal local draft
-  const [journalDraft, setJournalDraft] = useState({ title: '', content: '' });
+  const [journalDraft, setJournalDraft] = useState({ title: '', content: '', attachments: [] });
   const [editingJournalId, setEditingJournalId] = useState(null);
+  const journalFileRef = useRef(null);
 
   // Voice recording state
   const [recordings, setRecordings] = useState(initialEvent?.recordings || []);
   const [isRecording, setIsRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [recordingTitle, setRecordingTitle] = useState('');
+  const recordingFileRef = useRef(null);
 
   // Voice recording functions
   const startRecording = async () => {
@@ -1337,6 +1339,38 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
     setRecordings(prev => prev.filter(r => r.id !== id));
   };
 
+  // Journal file handling
+  const handleJournalFileUpload = (e) => {
+    const files = Array.from(e.target.files || []);
+    const newAttachments = files.map(file => ({
+      id: `file-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      file: file
+    }));
+    setJournalDraft(prev => ({ ...prev, attachments: [...prev.attachments, ...newAttachments] }));
+  };
+
+  const removeJournalAttachment = (id) => {
+    setJournalDraft(prev => ({ ...prev, attachments: prev.attachments.filter(a => a.id !== id) }));
+  };
+
+  // Recording file handling
+  const handleRecordingFileUpload = (e) => {
+    const files = Array.from(e.target.files || []);
+    const newRecordings = files.map(file => ({
+      id: `file-recording-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      title: file.name,
+      url: URL.createObjectURL(file),
+      blob: file,
+      duration: 0,
+      createdAt: new Date(),
+      isFile: true
+    }));
+    setRecordings(prev => [...prev, ...newRecordings]);
+  };
+
   const updateJournal = (id, changes) => {
     setFormData(prev => ({
       ...prev,
@@ -1352,24 +1386,26 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
   };
 
   const addJournal = () => {
-    const hasDraft = journalDraft.content.trim().length > 0 || journalDraft.title.trim().length > 0;
+    const hasDraft = journalDraft.content.trim().length > 0 || journalDraft.title.trim().length > 0 || journalDraft.attachments.length > 0;
     const newId = `${Date.now()}-journal`;
     const entry = hasDraft
       ? {
           id: newId,
           title: journalDraft.title.trim() || 'Journal Entry',
           content: journalDraft.content.trim(),
+          attachments: journalDraft.attachments,
           createdAt: new Date().toISOString()
         }
       : {
           id: newId,
           title: 'Journal Entry',
           content: '',
+          attachments: [],
           createdAt: new Date().toISOString()
         };
 
     setFormData((prev) => ({ ...prev, journals: [...(prev.journals || []), entry] }));
-    setJournalDraft({ title: '', content: '' });
+    setJournalDraft({ title: '', content: '', attachments: [] });
     // Open the newly added entry in edit mode if it was empty draft
     setEditingJournalId(newId);
   };
@@ -1580,6 +1616,48 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
                       rows="3"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                     />
+                    
+                    {/* File Attachments */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-sm font-medium text-gray-700">Attachments</label>
+                        <button 
+                          type="button" 
+                          onClick={() => journalFileRef.current?.click()} 
+                          className="text-xs text-blue-600 hover:underline"
+                        >
+                          Add Files
+                        </button>
+                      </div>
+                      <input 
+                        ref={journalFileRef} 
+                        type="file" 
+                        multiple 
+                        onChange={handleJournalFileUpload} 
+                        className="hidden" 
+                      />
+                      
+                      {journalDraft.attachments.length > 0 && (
+                        <div className="space-y-1">
+                          {journalDraft.attachments.map((attachment) => (
+                            <div key={attachment.id} className="flex items-center justify-between bg-white p-2 rounded border text-xs">
+                              <div className="flex-1 truncate">
+                                <span className="font-medium">{attachment.name}</span>
+                                <span className="text-gray-500 ml-2">({Math.round(attachment.size / 1024)}KB)</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => removeJournalAttachment(attachment.id)}
+                                className="text-red-500 hover:text-red-700 ml-2"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    
                     <button
                       type="button"
                       onClick={addJournal}
@@ -1596,6 +1674,18 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
                         <div key={journal.id} className="bg-white p-3 rounded border">
                           <div className="font-medium text-sm text-gray-800">{journal.title}</div>
                           <div className="text-xs text-gray-500 mt-1">{journal.content.substring(0, 50)}...</div>
+                          {journal.attachments && journal.attachments.length > 0 && (
+                            <div className="mt-2">
+                              <div className="text-xs text-gray-600 mb-1">Attachments ({journal.attachments.length}):</div>
+                              <div className="space-y-1">
+                                {journal.attachments.map((attachment) => (
+                                  <div key={attachment.id} className="text-xs text-blue-600 truncate">
+                                    📎 {attachment.name}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -1645,6 +1735,27 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
                         Stop Recording
                       </button>
                     )}
+                    
+                    {/* File Upload for Recordings */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-sm font-medium text-gray-700">Or Upload Files</label>
+                        <button 
+                          type="button" 
+                          onClick={() => recordingFileRef.current?.click()} 
+                          className="text-xs text-blue-600 hover:underline"
+                        >
+                          Add Files
+                        </button>
+                      </div>
+                      <input 
+                        ref={recordingFileRef} 
+                        type="file" 
+                        multiple 
+                        onChange={handleRecordingFileUpload} 
+                        className="hidden" 
+                      />
+                    </div>
                   </div>
 
                   {/* Recordings List */}
@@ -1655,9 +1766,15 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
                           <div className="flex items-center justify-between">
                             <div className="flex-1">
                               <div className="font-medium text-sm text-gray-800">{recording.title}</div>
-                              <audio controls className="w-full mt-2">
-                                <source src={recording.url} type="audio/webm" />
-                              </audio>
+                              {recording.isFile ? (
+                                <div className="text-xs text-gray-500 mt-1">
+                                  📁 Uploaded file
+                                </div>
+                              ) : (
+                                <audio controls className="w-full mt-2">
+                                  <source src={recording.url} type="audio/webm" />
+                                </audio>
+                              )}
                             </div>
                             <button
                               type="button"
