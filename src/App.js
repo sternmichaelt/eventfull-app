@@ -2322,6 +2322,28 @@ function EventFull() {
   const filteredEvents = sortedEvents.filter(e => selectedCategories.has(e.category));
 
   // Define functions before using them in empty state
+  const handleZoomIn = () => setZoom(prev => Math.min(prev * 1.5, 5));
+  const handleZoomOut = () => setZoom(prev => Math.max(prev / 1.5, 0.3));
+
+  const toggleCategory = (key) => {
+    setSelectedCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const selectAllCategories = () => {
+    setSelectedCategories(new Set(allCategoryKeys));
+  };
+
+  const addEvent = (newEvent) => {
+    setEvents([...events, newEvent]);
+  };
 
   // If no events, show timeline with empty state but allow adding events
   if (sortedEvents.length === 0) {
@@ -2561,22 +2583,6 @@ function EventFull() {
   const endYear = lastEvent?.date?.getFullYear() || new Date().getFullYear();
   const totalYears = endYear - startYear + 1;
 
-  const toggleCategory = (key) => {
-    setSelectedCategories(prev => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      return next;
-    });
-  };
-
-  const selectAllCategories = () => {
-    setSelectedCategories(new Set(allCategoryKeys));
-  };
-
   // Calculate event position on timeline
   const getEventPosition = (event) => {
     const eventYear = event.date.getFullYear();
@@ -2585,9 +2591,6 @@ function EventFull() {
     const timelineWidth = Math.max(1400, totalYears * 120 * zoom) - 400; // Account for padding
     return 200 + (yearProgress * timelineWidth); // Return pixel position instead of percentage
   };
-
-  const handleZoomIn = () => setZoom(prev => Math.min(prev * 1.5, 5));
-  const handleZoomOut = () => setZoom(prev => Math.max(prev / 1.5, 0.3));
 
   const getCategoryIcon = (category) => {
     const config = allCategories[category] || allCategories.milestone;
@@ -2615,10 +2618,6 @@ function EventFull() {
       return age - 1;
     }
     return age;
-  };
-
-  const addEvent = (newEvent) => {
-    setEvents([...events, newEvent]);
   };
 
   const saveEditedEvent = (updatedEvent) => {
