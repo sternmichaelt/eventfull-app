@@ -1824,6 +1824,256 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
   );
 }
 
+// Timeline Management Modal
+function TimelineModal({ timelines, currentTimelineId, onClose, onSelectTimeline, onCreateTimeline, onDeleteTimeline, onRenameTimeline, onShareTimeline, sharedUsers }) {
+  const [newTimelineName, setNewTimelineName] = useState('');
+  const [editingId, setEditingId] = useState(null);
+  const [editingName, setEditingName] = useState('');
+  const [sharingTimelineId, setSharingTimelineId] = useState(null);
+  const [shareEmail, setShareEmail] = useState('');
+
+  const handleCreate = () => {
+    if (newTimelineName.trim()) {
+      onCreateTimeline(newTimelineName.trim());
+      setNewTimelineName('');
+    }
+  };
+
+  const startEdit = (timeline) => {
+    setEditingId(timeline.id);
+    setEditingName(timeline.name);
+  };
+
+  const saveEdit = () => {
+    if (editingName.trim() && editingId) {
+      onRenameTimeline(editingId, editingName.trim());
+      setEditingId(null);
+      setEditingName('');
+    }
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditingName('');
+  };
+
+  const handleShare = () => {
+    if (shareEmail.trim() && sharingTimelineId) {
+      onShareTimeline(sharingTimelineId, shareEmail.trim());
+      setShareEmail('');
+      setSharingTimelineId(null);
+    }
+  };
+
+  const openShareDialog = (timelineId) => {
+    setSharingTimelineId(timelineId);
+    setShareEmail('');
+  };
+
+  const closeShareDialog = () => {
+    setSharingTimelineId(null);
+    setShareEmail('');
+  };
+
+  const getSharedUsersForTimeline = (timelineId) => {
+    return sharedUsers[timelineId] || [];
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[95vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="flex justify-between items-center p-6 border-b">
+          <h2 className="text-2xl font-bold text-gray-900">Manage Timelines</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6">
+          {/* Create New Timeline */}
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">Create New Timeline</h3>
+            <div className="flex gap-3">
+              <input
+                type="text"
+                value={newTimelineName}
+                onChange={(e) => setNewTimelineName(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleCreate()}
+                placeholder="Timeline name..."
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <button
+                onClick={handleCreate}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Create
+              </button>
+            </div>
+          </div>
+
+          {/* Timelines List */}
+          <div>
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">Your Timelines</h3>
+            {timelines.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">
+                <Calendar className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                <p>No timelines yet. Create your first timeline above.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {timelines.map((timeline) => (
+                  <div
+                    key={timeline.id}
+                    className={`border-2 rounded-lg p-4 cursor-pointer transition-all ${
+                      timeline.id === currentTimelineId
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-md'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        {editingId === timeline.id ? (
+                          <input
+                            type="text"
+                            value={editingName}
+                            onChange={(e) => setEditingName(e.target.value)}
+                            onKeyPress={(e) => {
+                              if (e.key === 'Enter') saveEdit();
+                              if (e.key === 'Escape') cancelEdit();
+                            }}
+                            className="w-full px-2 py-1 border border-blue-500 rounded text-sm"
+                            autoFocus
+                          />
+                        ) : (
+                          <h4 className="font-semibold text-gray-900 mb-1">{timeline.name}</h4>
+                        )}
+                        <div className="text-xs text-gray-500">
+                          {timeline.eventCount || 0} events
+                        </div>
+                        {getSharedUsersForTimeline(timeline.id).length > 0 && (
+                          <div className="text-xs text-green-600 mt-1">
+                            👥 Shared with {getSharedUsersForTimeline(timeline.id).length} user{getSharedUsersForTimeline(timeline.id).length !== 1 ? 's' : ''}
+                          </div>
+                        )}
+                      </div>
+                      {timeline.id === currentTimelineId && (
+                        <span className="text-xs bg-blue-500 text-white px-2 py-1 rounded">Active</span>
+                      )}
+                    </div>
+                    
+                    {/* Share Dialog */}
+                    {sharingTimelineId === timeline.id && (
+                      <div className="mb-3 p-3 bg-gray-50 rounded border">
+                        <div className="text-sm font-medium text-gray-700 mb-2">Share Timeline</div>
+                        <div className="flex gap-2">
+                          <input
+                            type="email"
+                            value={shareEmail}
+                            onChange={(e) => setShareEmail(e.target.value)}
+                            onKeyPress={(e) => e.key === 'Enter' && handleShare()}
+                            placeholder="Enter email address..."
+                            className="flex-1 px-3 py-1.5 border border-gray-300 rounded text-sm"
+                          />
+                          <button
+                            onClick={handleShare}
+                            className="px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700"
+                          >
+                            Share
+                          </button>
+                          <button
+                            onClick={closeShareDialog}
+                            className="px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded hover:bg-gray-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                        {getSharedUsersForTimeline(timeline.id).length > 0 && (
+                          <div className="mt-2">
+                            <div className="text-xs text-gray-600 mb-1">Shared with:</div>
+                            <div className="flex flex-wrap gap-1">
+                              {getSharedUsersForTimeline(timeline.id).map((user, idx) => (
+                                <span key={idx} className="text-xs bg-white px-2 py-0.5 rounded border">
+                                  {user}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    <div className="flex gap-2 mt-3">
+                      {editingId === timeline.id ? (
+                        <>
+                          <button
+                            onClick={saveEdit}
+                            className="flex-1 px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={cancelEdit}
+                            className="flex-1 px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded hover:bg-gray-50"
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => onSelectTimeline(timeline.id)}
+                            className="flex-1 px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                          >
+                            {timeline.id === currentTimelineId ? 'Active' : 'Select'}
+                          </button>
+                          <button
+                            onClick={() => openShareDialog(timeline.id)}
+                            className="px-3 py-1.5 border border-green-300 text-green-700 text-sm rounded hover:bg-green-50"
+                            title="Share Timeline"
+                          >
+                            📤
+                          </button>
+                          <button
+                            onClick={() => startEdit(timeline)}
+                            className="px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded hover:bg-gray-50"
+                            title="Rename"
+                          >
+                            ✏️
+                          </button>
+                          {timelines.length > 1 && (
+                            <button
+                              onClick={() => onDeleteTimeline(timeline.id)}
+                              className="px-3 py-1.5 border border-red-300 text-red-700 text-sm rounded hover:bg-red-50"
+                              title="Delete"
+                            >
+                              🗑️
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-3 p-6 border-t">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EventFull() {
   const [events, setEvents] = useState(sampleEvents);
   const [zoom, setZoom] = useState(1);
@@ -1831,6 +2081,40 @@ function EventFull() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
   const timelineRef = useRef(null);
+  
+  // Timelines management
+  const [timelines, setTimelines] = useState(() => {
+    try {
+      const saved = localStorage.getItem('eventfull:timelines');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return parsed.length > 0 ? parsed : [{ id: 'default', name: 'My Timeline', eventCount: 0 }];
+      }
+      return [{ id: 'default', name: 'My Timeline', eventCount: 0 }];
+    } catch {
+      return [{ id: 'default', name: 'My Timeline', eventCount: 0 }];
+    }
+  });
+  
+  const [currentTimelineId, setCurrentTimelineId] = useState(() => {
+    try {
+      return localStorage.getItem('eventfull:currentTimelineId') || 'default';
+    } catch {
+      return 'default';
+    }
+  });
+  
+  const [showTimelineModal, setShowTimelineModal] = useState(false);
+  
+  // Shared users for timelines
+  const [sharedUsers, setSharedUsers] = useState(() => {
+    try {
+      const saved = localStorage.getItem('eventfull:sharedUsers');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
   
   // Load custom categories from localStorage
   const [customCategories] = useState(() => {
@@ -1875,6 +2159,89 @@ function EventFull() {
     } catch {}
   }, [backgroundUrl]);
 
+  // Save timelines to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('eventfull:timelines', JSON.stringify(timelines));
+    } catch {}
+  }, [timelines]);
+
+  // Save current timeline ID to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('eventfull:currentTimelineId', currentTimelineId);
+    } catch {}
+  }, [currentTimelineId]);
+
+  // Save shared users to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('eventfull:sharedUsers', JSON.stringify(sharedUsers));
+    } catch {}
+  }, [sharedUsers]);
+
+  // Update event counts for timelines
+  useEffect(() => {
+    setTimelines(prev => prev.map(t => ({
+      ...t,
+      eventCount: t.id === currentTimelineId ? events.length : (t.eventCount || 0)
+    })));
+  }, [events.length, currentTimelineId]);
+
+  // Timeline management functions
+  const handleCreateTimeline = (name) => {
+    const newTimeline = {
+      id: `timeline-${Date.now()}`,
+      name,
+      eventCount: 0,
+      createdAt: new Date().toISOString()
+    };
+    setTimelines(prev => [...prev, newTimeline]);
+    setCurrentTimelineId(newTimeline.id);
+    // Clear events when switching to new timeline
+    setEvents([]);
+  };
+
+  const handleSelectTimeline = (timelineId) => {
+    setCurrentTimelineId(timelineId);
+    // In a real app, you'd load events for this timeline here
+    // For now, we'll keep the current events
+  };
+
+  const handleDeleteTimeline = (timelineId) => {
+    if (window.confirm('Are you sure you want to delete this timeline? All events will be lost.')) {
+      setTimelines(prev => {
+        const filtered = prev.filter(t => t.id !== timelineId);
+        // If we deleted the current timeline, switch to the first one
+        if (timelineId === currentTimelineId && filtered.length > 0) {
+          setCurrentTimelineId(filtered[0].id);
+          setEvents([]);
+        }
+        return filtered;
+      });
+    }
+  };
+
+  const handleRenameTimeline = (timelineId, newName) => {
+    setTimelines(prev => prev.map(t => 
+      t.id === timelineId ? { ...t, name: newName } : t
+    ));
+  };
+
+  const handleShareTimeline = (timelineId, userEmail) => {
+    setSharedUsers(prev => {
+      const timelineShares = prev[timelineId] || [];
+      // Avoid duplicates
+      if (!timelineShares.includes(userEmail.toLowerCase())) {
+        return {
+          ...prev,
+          [timelineId]: [...timelineShares, userEmail.toLowerCase()]
+        };
+      }
+      return prev;
+    });
+  };
+
   // Sort events by date
   const sortedEvents = [...events].sort((a, b) => a.date.getTime() - b.date.getTime());
   const filteredEvents = sortedEvents.filter(e => selectedCategories.has(e.category));
@@ -1897,6 +2264,16 @@ function EventFull() {
             </div>
             
             <div className="flex items-center gap-3">
+              {/* Timelines button */}
+              <button 
+                onClick={() => setShowTimelineModal(true)}
+                className="border border-gray-300 text-gray-700 px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50"
+                title="Manage Timelines"
+              >
+                <Calendar className="w-4 h-4" />
+                Timelines
+              </button>
+              
               {/* Photos dropdown */}
               <div className="relative">
                 <button
@@ -2082,6 +2459,20 @@ function EventFull() {
             onClose={() => setShowSettings(false)}
           />
         )}
+
+        {showTimelineModal && (
+          <TimelineModal
+            timelines={timelines}
+            currentTimelineId={currentTimelineId}
+            onClose={() => setShowTimelineModal(false)}
+            onSelectTimeline={handleSelectTimeline}
+            onCreateTimeline={handleCreateTimeline}
+            onDeleteTimeline={handleDeleteTimeline}
+            onRenameTimeline={handleRenameTimeline}
+            onShareTimeline={handleShareTimeline}
+            sharedUsers={sharedUsers}
+          />
+        )}
       </div>
     );
   }
@@ -2182,6 +2573,16 @@ function EventFull() {
           </div>
           
           <div className="flex items-center gap-3">
+            {/* Timelines button */}
+            <button 
+              onClick={() => setShowTimelineModal(true)}
+              className="border border-gray-300 text-gray-700 px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50"
+              title="Manage Timelines"
+            >
+              <Calendar className="w-4 h-4" />
+              Timelines
+            </button>
+            
             {/* Photos dropdown */}
             <div className="relative">
             <button 
@@ -2594,6 +2995,21 @@ function EventFull() {
           onSelectBackground={(url) => setBackgroundUrl(url)}
           onClearBackground={() => setBackgroundUrl('')}
           onClose={() => setShowSettings(false)}
+        />
+      )}
+
+      {/* Timeline Management Modal */}
+      {showTimelineModal && (
+        <TimelineModal
+          timelines={timelines}
+          currentTimelineId={currentTimelineId}
+          onClose={() => setShowTimelineModal(false)}
+          onSelectTimeline={handleSelectTimeline}
+          onCreateTimeline={handleCreateTimeline}
+          onDeleteTimeline={handleDeleteTimeline}
+          onRenameTimeline={handleRenameTimeline}
+          onShareTimeline={handleShareTimeline}
+          sharedUsers={sharedUsers}
         />
       )}
     </div>
