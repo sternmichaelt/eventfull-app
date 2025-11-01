@@ -2075,7 +2075,6 @@ function TimelineModal({ timelines, currentTimelineId, onClose, onSelectTimeline
 }
 
 function EventFull() {
-  const [events, setEvents] = useState(sampleEvents);
   const [zoom, setZoom] = useState(1);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -2102,6 +2101,37 @@ function EventFull() {
     } catch {
       return 'default';
     }
+  });
+
+  // Load events for current timeline
+  const loadEventsForTimeline = (timelineId) => {
+    try {
+      const saved = localStorage.getItem(`eventfull:events:${timelineId}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Convert date strings back to Date objects
+        return parsed.map(e => ({
+          ...e,
+          date: new Date(e.date)
+        }));
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  };
+
+  // Events state - loads events for current timeline
+  const [events, setEvents] = useState(() => {
+    const timelineId = (() => {
+      try {
+        return localStorage.getItem('eventfull:currentTimelineId') || 'default';
+      } catch {
+        return 'default';
+      }
+    })();
+    const loaded = loadEventsForTimeline(timelineId);
+    return loaded.length > 0 ? loaded : sampleEvents;
   });
   
   const [showTimelineModal, setShowTimelineModal] = useState(false);
@@ -2180,13 +2210,26 @@ function EventFull() {
     } catch {}
   }, [sharedUsers]);
 
-  // Update event counts for timelines
+  // Save events to localStorage for current timeline
   useEffect(() => {
-    setTimelines(prev => prev.map(t => ({
-      ...t,
-      eventCount: t.id === currentTimelineId ? events.length : (t.eventCount || 0)
-    })));
-  }, [events.length, currentTimelineId]);
+    try {
+      // Convert dates to ISO strings for storage
+      const eventsToSave = events.map(e => ({
+        ...e,
+        date: e.date.toISOString()
+      }));
+      localStorage.setItem(`eventfull:events:${currentTimelineId}`, JSON.stringify(eventsToSave));
+      
+      // Update event count for current timeline
+      setTimelines(prev => prev.map(t => ({
+        ...t,
+        eventCount: t.id === currentTimelineId ? events.length : (t.eventCount || 0)
+      })));
+    } catch (e) {
+      console.error('Failed to save events', e);
+    }
+  }, [events, currentTimelineId]);
+
 
   // Timeline management functions
   const handleCreateTimeline = (name) => {
@@ -2198,23 +2241,55 @@ function EventFull() {
     };
     setTimelines(prev => [...prev, newTimeline]);
     setCurrentTimelineId(newTimeline.id);
-    // Clear events when switching to new timeline
+    // Initialize empty events for new timeline
     setEvents([]);
+    // Save empty events array to localStorage
+    try {
+      localStorage.setItem(`eventfull:events:${newTimeline.id}`, JSON.stringify([]));
+    } catch {}
   };
 
   const handleSelectTimeline = (timelineId) => {
+    // Save current events before switching
+    try {
+      const eventsToSave = events.map(e => ({
+        ...e,
+        date: e.date.toISOString()
+      }));
+      localStorage.setItem(`eventfull:events:${currentTimelineId}`, JSON.stringify(eventsToSave));
+    } catch {}
+    
+    // Switch to new timeline
     setCurrentTimelineId(timelineId);
-    // In a real app, you'd load events for this timeline here
-    // For now, we'll keep the current events
+    
+    // Load events for the selected timeline
+    const loadedEvents = loadEventsForTimeline(timelineId);
+    setEvents(loadedEvents.length > 0 ? loadedEvents : []);
+    
+    // Reset selected event and close any open modals
+    setSelectedEvent(null);
+    setShowAddForm(false);
+    setEditingEvent(null);
   };
 
   const handleDeleteTimeline = (timelineId) => {
     if (window.confirm('Are you sure you want to delete this timeline? All events will be lost.')) {
+      // Delete events from localStorage
+      try {
+        localStorage.removeItem(`eventfull:events:${timelineId}`);
+      } catch {}
+      
       setTimelines(prev => {
         const filtered = prev.filter(t => t.id !== timelineId);
         // If we deleted the current timeline, switch to the first one
         if (timelineId === currentTimelineId && filtered.length > 0) {
-          setCurrentTimelineId(filtered[0].id);
+          const newTimelineId = filtered[0].id;
+          setCurrentTimelineId(newTimelineId);
+          // Load events for the new timeline
+          const loadedEvents = loadEventsForTimeline(newTimelineId);
+          setEvents(loadedEvents.length > 0 ? loadedEvents : []);
+        } else if (filtered.length === 0) {
+          // If no timelines left, create default
           setEvents([]);
         }
         return filtered;
@@ -2260,7 +2335,9 @@ function EventFull() {
                 <img src="/logo-eventfull.svg" alt="EventFull" className="w-8 h-8 md:w-10 md:h-10 lg:w-12 lg:h-12" />
                 <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold"><span className="text-blue-600">Event</span><span className="text-purple-600">Full</span></h1>
               </div>
-              <p className="text-gray-600 mt-1">Your Life's Timeline</p>
+              <p className="text-gray-600 mt-1">
+                {timelines.find(t => t.id === currentTimelineId)?.name || 'Your Timeline'}
+              </p>
             </div>
             
             <div className="flex items-center gap-3">
@@ -2569,7 +2646,9 @@ function EventFull() {
               <img src="/logo-eventfull.svg" alt="EventFull" className="w-8 h-8 md:w-10 md:h-10 lg:w-12 lg:h-12" />
               <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold"><span className="text-blue-600">Event</span><span className="text-purple-600">Full</span></h1>
             </div>
-            <p className="text-gray-600 mt-1">Your Life's Timeline</p>
+            <p className="text-gray-600 mt-1">
+              {timelines.find(t => t.id === currentTimelineId)?.name || 'Your Timeline'}
+            </p>
           </div>
           
           <div className="flex items-center gap-3">
