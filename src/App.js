@@ -1280,7 +1280,8 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
 
   // Journal local draft
   const [journalDraft, setJournalDraft] = useState({ title: '', content: '', attachments: [] });
-  const [editingJournalId, setEditingJournalId] = useState(null);
+  // eslint-disable-next-line no-unused-vars
+  const [_editingJournalId, setEditingJournalId] = useState(null);
   const journalFileRef = useRef(null);
 
   // Voice recording state
@@ -1371,14 +1372,16 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
     setRecordings(prev => [...prev, ...newRecordings]);
   };
 
-  const updateJournal = (id, changes) => {
+  // eslint-disable-next-line no-unused-vars
+  const _updateJournal = (id, changes) => {
     setFormData(prev => ({
       ...prev,
       journals: (prev.journals || []).map(j => j.id === id ? { ...j, ...changes } : j)
     }));
   };
 
-  const removeJournal = (id) => {
+  // eslint-disable-next-line no-unused-vars
+  const _removeJournal = (id) => {
     setFormData(prev => ({
       ...prev,
       journals: (prev.journals || []).filter(j => j.id !== id)
@@ -1435,7 +1438,8 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
     });
   };
 
-  const renameGalleryItem = (id, name) => {
+  // eslint-disable-next-line no-unused-vars
+  const _renameGalleryItem = (id, name) => {
     setFormData((prev) => ({
       ...prev,
       images: (prev.images || []).map((img) => (img.id === id ? { ...img, name } : img))
