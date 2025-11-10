@@ -2596,10 +2596,10 @@ function EventFull() {
     return 200 + (yearProgress * timelineWidth); // Return pixel position instead of percentage
   };
 
-  const getCategoryIcon = (category) => {
+  const getCategoryIcon = (category, size = 3) => {
     const config = allCategories[category] || allCategories.milestone;
     const IconComponent = config.icon;
-    return <IconComponent className="w-3 h-3" />;
+    return <IconComponent style={{ width: `${size}px`, height: `${size}px` }} />;
   };
 
   const getCategoryColor = (category) => {
@@ -2818,8 +2818,10 @@ function EventFull() {
               
               // Smart positioning to prevent cards from going off-screen
               const getCardPosition = () => {
-                const cardWidth = 320; // Card width in pixels
-                const cardHeight = event.image ? 320 : 240; // Estimated card height
+                const baseCardWidth = 320; // Base card width in pixels
+                const baseCardHeight = event.image ? 320 : 240; // Base estimated card height
+                const cardWidth = baseCardWidth * zoom; // Scale card width with zoom
+                const cardHeight = baseCardHeight * zoom; // Scale card height with zoom
                 const timelineCenter = 50; // Timeline is at 50% of container height
                 const containerPadding = 15; // Padding from edges
                 
@@ -2879,20 +2881,24 @@ function EventFull() {
                   
                   {/* Event Dot */}
                   <div 
-                    className={`w-5 h-5 rounded-full ${getCategoryColor(event.category)} border-3 border-white shadow-lg relative z-10 flex items-center justify-center text-white transform hover:scale-110 transition-transform`}
+                    className={`rounded-full ${getCategoryColor(event.category)} border-3 border-white shadow-lg relative z-10 flex items-center justify-center text-white transform hover:scale-110 transition-transform`}
                     style={{
+                      width: `${5 * zoom}px`,
+                      height: `${5 * zoom}px`,
                       transform: `scale(${Math.max(0.8, event.importance / 10)}) ${selectedEvent?.id === event.id ? 'scale(1.3)' : ''}`
                     }}
                   >
-                    {event.image ? <Camera className="w-3 h-3" /> : getCategoryIcon(event.category)}
+                    {event.image ? <Camera style={{ width: `${3 * zoom}px`, height: `${3 * zoom}px` }} /> : getCategoryIcon(event.category, 3 * zoom)}
                   </div>
                   
                   {/* Event Card */}
                   <div 
-                    className={`absolute w-80 ${cardPosition.horizontalClass} ${cardPosition.position} ${selectedEvent?.id === event.id ? 'z-50' : 'z-30'}`}
+                    className={`absolute ${cardPosition.horizontalClass} ${cardPosition.position} ${selectedEvent?.id === event.id ? 'z-50' : 'z-30'}`}
                     style={{
-                      maxHeight: '350px',
-                      overflowY: 'auto'
+                      width: `${320 * zoom}px`,
+                      maxHeight: `${350 * zoom}px`,
+                      overflowY: 'auto',
+                      fontSize: `${zoom}em`
                     }}
                   >
                     <div className={`bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden transition-all duration-200 ${
@@ -2902,7 +2908,12 @@ function EventFull() {
                     }`}>
                       {/* Event Image */}
                       {event.image && (
-                        <div className="w-full h-32 bg-gray-100 overflow-hidden cursor-pointer" title="View photos" onClick={(e) => { e.stopPropagation(); setGalleryForEvent(event); setGalleryStartIndex(0); }}>
+                        <div 
+                          className="w-full bg-gray-100 overflow-hidden cursor-pointer" 
+                          title="View photos" 
+                          onClick={(e) => { e.stopPropagation(); setGalleryForEvent(event); setGalleryStartIndex(0); }}
+                          style={{ height: `${128 * zoom}px` }}
+                        >
                           <img 
                             src={event.image} 
                             alt={event.title}
@@ -2911,32 +2922,67 @@ function EventFull() {
                         </div>
                       )}
                       
-                      <div className="p-4">
+                      <div style={{ padding: `${16 * zoom}px` }}>
                         <div className="flex justify-between items-start mb-2">
-                          <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs text-white ${getCategoryColor(event.category)}`}>
-                            {getCategoryIcon(event.category)}
+                          <div 
+                            className={`inline-flex items-center gap-1 rounded-full text-white ${getCategoryColor(event.category)}`}
+                            style={{ 
+                              padding: `${4 * zoom}px ${8 * zoom}px`,
+                              fontSize: `${12 * zoom}px`
+                            }}
+                          >
+                            {getCategoryIcon(event.category, 12 * zoom)}
                             <span>{allCategories[event.category]?.label || 'Event'}</span>
                           </div>
-                          <span className="text-xs text-gray-500 font-medium">Age {age}</span>
+                          <span 
+                            className="text-gray-500 font-medium"
+                            style={{ fontSize: `${12 * zoom}px` }}
+                          >
+                            Age {age}
+                          </span>
                         </div>
                         
-                        <h3 className="font-bold text-gray-900 mb-1">{event.title}</h3>
-                        <p className="text-sm text-gray-600 mb-2">{formatDate(event.date)}</p>
+                        <h3 
+                          className="font-bold text-gray-900 mb-1"
+                          style={{ fontSize: `${16 * zoom}px` }}
+                        >
+                          {event.title}
+                        </h3>
+                        <p 
+                          className="text-gray-600 mb-2"
+                          style={{ fontSize: `${14 * zoom}px` }}
+                        >
+                          {formatDate(event.date)}
+                        </p>
                         
                         {event.description && (
-                          <p className="text-sm text-gray-700 leading-relaxed mb-3">{event.description}</p>
+                          <p 
+                            className="text-gray-700 leading-relaxed mb-3"
+                            style={{ fontSize: `${14 * zoom}px` }}
+                          >
+                            {event.description}
+                          </p>
                         )}
                         
                         {/* Importance indicator */}
                         <div className="flex items-center gap-1">
-                          <span className="text-xs text-gray-500">Importance:</span>
+                          <span 
+                            className="text-gray-500"
+                            style={{ fontSize: `${12 * zoom}px` }}
+                          >
+                            Importance:
+                          </span>
                           <div className="flex gap-1">
                             {Array.from({ length: 5 }, (_, i) => (
                               <div 
                                 key={i} 
-                                className={`w-2 h-2 rounded-full ${
+                                className={`rounded-full ${
                                   i < event.importance / 2 ? 'bg-yellow-400' : 'bg-gray-200'
-                                }`} 
+                                }`}
+                                style={{
+                                  width: `${8 * zoom}px`,
+                                  height: `${8 * zoom}px`
+                                }}
                               />
                             ))}
                           </div>
