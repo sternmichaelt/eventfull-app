@@ -1,4 +1,106 @@
-# Getting Started with Create React App
+# EventFull - Your Life's Timeline
+
+EventFull is a timeline application that helps you organize and visualize important events in your life. Create multiple timelines, add events with photos, journals, and voice recordings, and share your timelines with others.
+
+## Features
+
+- 📅 **Multiple Timelines**: Create and manage multiple timelines
+- 📸 **Photo Management**: Upload and organize photos, tag them to events
+- 📝 **Journals**: Add journal entries to events
+- 🎤 **Voice Recordings**: Attach voice recordings to events
+- 🎨 **Custom Categories**: Create custom event categories
+- 🖼️ **Custom Backgrounds**: Personalize your timeline with custom backgrounds
+- 👥 **Timeline Sharing**: Share timelines with other users
+
+## Tech Stack
+
+- **Frontend**: React 19, Tailwind CSS
+- **Backend**: Supabase (PostgreSQL)
+- **Icons**: Lucide React
+- **Deployment**: Netlify
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js 16+ and npm
+- Supabase account (for database)
+
+### Installation
+
+1. Clone the repository:
+```bash
+git clone https://github.com/sternmichaelt/eventfull-app.git
+cd eventfull-app
+```
+
+2. Install dependencies:
+```bash
+npm install
+```
+
+3. Set up Supabase:
+   - See [SUPABASE_SETUP.md](./SUPABASE_SETUP.md) for detailed instructions
+   - Create a `.env` file with your Supabase credentials:
+   ```env
+   REACT_APP_SUPABASE_URL=https://your-project-id.supabase.co
+   REACT_APP_SUPABASE_ANON_KEY=your-anon-key-here
+   ```
+
+4. Run the database setup:
+   - Open Supabase SQL Editor
+   - Run the SQL from `supabase-setup.sql`
+
+5. Start the development server:
+```bash
+npm start
+```
+
+The app will open at [http://localhost:3000](http://localhost:3000)
+
+## Project Structure
+
+```
+eventfull-app/
+├── src/
+│   ├── api/           # Supabase API functions
+│   ├── lib/            # Supabase client configuration
+│   ├── utils/          # Utility functions (connection testing)
+│   └── App.js          # Main application component
+├── public/             # Static assets
+├── supabase-setup.sql # Database schema
+└── .env               # Environment variables (not in git)
+```
+
+## Available Scripts
+
+### `npm start`
+Runs the app in development mode at [http://localhost:3000](http://localhost:3000)
+
+### `npm run build`
+Builds the app for production to the `build` folder
+
+### `npm test`
+Launches the test runner
+
+## Deployment
+
+### Netlify
+
+1. Connect your GitHub repository to Netlify
+2. Set environment variables in Netlify dashboard:
+   - `REACT_APP_SUPABASE_URL`
+   - `REACT_APP_SUPABASE_ANON_KEY`
+3. Deploy!
+
+See [PRODUCTION_CHECKLIST.md](./PRODUCTION_CHECKLIST.md) for detailed deployment steps.
+
+## Documentation
+
+- [Supabase Setup Guide](./SUPABASE_SETUP.md) - Complete database setup instructions
+- [Production Checklist](./PRODUCTION_CHECKLIST.md) - Production readiness and deployment guide
+
+## Contributing
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
