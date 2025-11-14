@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Plus, ZoomIn, ZoomOut, Calendar, Heart, GraduationCap, Briefcase, Baby, Star, X, Camera, ChevronLeft, ChevronRight, Images, BookOpen, Settings, ChevronDown } from 'lucide-react';
+import { fetchEvents, createEvent, updateEvent, deleteEvent, fetchTimelines, createTimeline, updateTimeline, deleteTimeline, shareTimeline, fetchSharedTimelines, fetchUserSettings, updateUserSettings, fetchPhotos, createPhoto, updatePhoto, deletePhoto, tagPhotoToEvent, untagPhotoFromEvent, getPhotosForEvent } from './api/events';
+import { testConnection } from './utils/testSupabaseConnection';
 // Optional AI import (safe to remove)
 // import { classifyPhotos } from './ai/PhotoClassifier';
 
@@ -218,30 +220,15 @@ function BackgroundModal({ current, onSelect, onClear, onClose }) {
   );
 }
 
-function SettingsModal({ currentBackground, onSelectBackground, onClearBackground, onClose }) {
+function SettingsModal({ currentBackground, onSelectBackground, onClearBackground, onClose, customCategories, onUpdateCategories }) {
   const [activeTab, setActiveTab] = useState('background');
   // Background upload (settings)
   const [bgUploadPreview, setBgUploadPreview] = useState(null);
   const [bgUploadError, setBgUploadError] = useState('');
   const bgFileInputRef = useRef(null);
-  const [customCategories, setCustomCategories] = useState(() => {
-    try { 
-      const saved = localStorage.getItem('eventfull:customCategories');
-      return saved ? JSON.parse(saved) : {}; 
-    } catch { 
-      return {}; 
-    }
-  });
   const [editingCategory, setEditingCategory] = useState(null);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryKey, setNewCategoryKey] = useState('');
-
-  // Save custom categories to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem('eventfull:customCategories', JSON.stringify(customCategories));
-    } catch {}
-  }, [customCategories]);
 
   // Get all categories (default + custom)
   const getAllCategories = () => {
@@ -301,18 +288,16 @@ function SettingsModal({ currentBackground, onSelectBackground, onClearBackgroun
   };
 
   const saveCustomCategory = (key, label, baseCategory = 'milestone') => {
-    setCustomCategories(prev => ({
-      ...prev,
+    onUpdateCategories({
+      ...customCategories,
       [key]: { label, baseCategory }
-    }));
+    });
   };
 
   const deleteCustomCategory = (key) => {
-    setCustomCategories(prev => {
-      const updated = { ...prev };
-      delete updated[key];
-      return updated;
-    });
+    const updated = { ...customCategories };
+    delete updated[key];
+    onUpdateCategories(updated);
   };
 
   const startEditing = (key, currentLabel) => {
@@ -789,24 +774,76 @@ const categoryConfig = {
   career: { color: 'bg-green-500', icon: Briefcase, label: 'Career' },
   relationship: { color: 'bg-pink-500', icon: Heart, label: 'Relationship' },
   birthday: { color: 'bg-purple-500', icon: Calendar, label: 'Birthday' },
-  family: { color: 'bg-orange-500', icon: Baby, label: 'Family' }
+  family: { color: 'bg-orange-500', icon: Baby, label: 'Family' },
+  untagged: { color: 'bg-gray-500', icon: Images, label: 'Untagged' }
 };
 
 function EventGallery({ event, startIndex = 0, onClose }) {
   const [index, setIndex] = useState(startIndex);
+  const [taggedPhotos, setTaggedPhotos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  
+  useEffect(() => {
+    const loadPhotos = async () => {
+      if (event?.id) {
+        try {
+          setLoading(true);
+          const photos = await getPhotosForEvent(event.id);
+          setTaggedPhotos(photos);
+          // Include main image if it exists
+          if (event.image) {
+            setTaggedPhotos(prev => [
+              { id: 'main', url: event.image, name: event.title || 'Image', category: event.category },
+              ...prev
+            ]);
+          }
+        } catch (err) {
+          console.error('Error loading event photos:', err);
+        } finally {
+          setLoading(false);
+        }
+      } else {
+        setLoading(false);
+      }
+    };
+    loadPhotos();
+  }, [event?.id]);
+  
   if (!event) return null;
-  const gallery = [
-    ...(event.image ? [{ id: 'main', url: event.image, name: event.title || 'Image', tags: [event.category] }] : []),
-    ...(event.images || [])
-  ];
+  
+  const gallery = taggedPhotos;
   const goPrev = () => setIndex((i) => (i - 1 + gallery.length) % gallery.length);
   const goNext = () => setIndex((i) => (i + 1) % gallery.length);
+
+  if (loading) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-lg shadow-xl p-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+          <div className="text-sm text-gray-600">Loading photos...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (gallery.length === 0) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-lg shadow-xl p-8 text-center">
+          <p className="text-gray-600 mb-4">No photos for this event</p>
+          <button onClick={onClose} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl overflow-hidden">
         <div className="flex items-center justify-between p-4 border-b">
-          <h3 className="text-lg font-semibold text-gray-900">{event.title} — Photos</h3>
+          <h3 className="text-lg font-semibold text-gray-900">{event.title} — Photos ({gallery.length})</h3>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
             <X className="w-5 h-5" />
           </button>
@@ -820,7 +857,7 @@ function EventGallery({ event, startIndex = 0, onClose }) {
               )}
             </div>
             <div className="mt-2 text-center text-sm text-gray-600">
-              {gallery[index]?.name || 'Photo'}
+              {gallery[index]?.name || 'Photo'} ({index + 1} of {gallery.length})
             </div>
           </div>
           <button onClick={goNext} className="p-2 rounded hover:bg-gray-100"><ChevronRight className="w-5 h-5" /></button>
@@ -830,37 +867,46 @@ function EventGallery({ event, startIndex = 0, onClose }) {
   );
 }
 
-function AllPhotosModal({ events, selectedCategories, onClose, onToggleCategory, onSelectAll, allCategories }) {
-  // Session-local uploads added in the Photos modal
-  const [uploadedPhotos] = useState([]); // {id, url, name, category}
+function AllPhotosModal({ selectedCategories, onClose, onToggleCategory, onSelectAll, allCategories }) {
+  const [photos, setPhotos] = useState([]);
+  const [loading, setLoading] = useState(true);
   const contentRef = useRef(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
 
-  const basePhotos = events.flatMap((e) => {
-    const photos = [];
-    if (e.image) photos.push({ id: `${e.id}-main`, url: e.image, name: e.title || 'Image', eventId: e.id, category: e.category });
-    (e.images || []).forEach((img) => photos.push({ ...img, eventId: e.id, category: e.category }));
-    return photos;
-  });
-  const allPhotos = [...basePhotos, ...uploadedPhotos].filter(p => selectedCategories.has(p.category));
+  useEffect(() => {
+    const loadPhotos = async () => {
+      try {
+        setLoading(true);
+        const allPhotos = await fetchPhotos();
+        setPhotos(allPhotos);
+      } catch (err) {
+        console.error('Error loading photos:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadPhotos();
+  }, []);
+
+  const filteredPhotos = photos.filter(p => selectedCategories.has(p.category || 'untagged'));
 
   const [selectedIdx, setSelectedIdx] = useState(0);
   // Keep selected index in range as photos/filters change
   useEffect(() => {
-    if (allPhotos.length === 0) {
+    if (filteredPhotos.length === 0) {
       setSelectedIdx(0);
-    } else if (selectedIdx < 0 || selectedIdx >= allPhotos.length) {
+    } else if (selectedIdx < 0 || selectedIdx >= filteredPhotos.length) {
       setSelectedIdx(0);
     }
-  }, [allPhotos.length, selectedIdx]);
-  const selectPrev = () => setSelectedIdx((i) => (i - 1 + allPhotos.length) % allPhotos.length);
-  const selectNext = () => setSelectedIdx((i) => (i + 1) % allPhotos.length);
+  }, [filteredPhotos.length, selectedIdx]);
+  const selectPrev = () => setSelectedIdx((i) => (i - 1 + filteredPhotos.length) % filteredPhotos.length);
+  const selectNext = () => setSelectedIdx((i) => (i + 1) % filteredPhotos.length);
 
   const [lightboxIdx, setLightboxIdx] = useState(null);
   const openLightbox = (absoluteIdx) => setLightboxIdx(absoluteIdx);
   const closeLightbox = () => setLightboxIdx(null);
-  const lbPrev = () => setLightboxIdx((i) => (i - 1 + allPhotos.length) % allPhotos.length);
-  const lbNext = () => setLightboxIdx((i) => (i + 1) % allPhotos.length);
+  const lbPrev = () => setLightboxIdx((i) => (i - 1 + filteredPhotos.length) % filteredPhotos.length);
+  const lbNext = () => setLightboxIdx((i) => (i + 1) % filteredPhotos.length);
 
   // Event Photos modal does not include Manage Photos/AI
 
@@ -922,20 +968,25 @@ function AllPhotosModal({ events, selectedCategories, onClose, onToggleCategory,
 
           {/* Manage Photos was removed from this modal */}
 
-          {allPhotos.length === 0 ? (
+          {loading ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+              <div className="text-sm text-gray-600">Loading photos...</div>
+            </div>
+          ) : filteredPhotos.length === 0 ? (
             <div className="text-sm text-gray-600">No photos for the selected filters.</div>
           ) : (
             <div>
               {/* Viewer */}
               <div className="mb-4">
                 <div className="w-full h-72 bg-gray-100 rounded flex items-center justify-center overflow-hidden">
-                  {allPhotos[selectedIdx]?.url && (
-                    <img src={allPhotos[selectedIdx].url} alt={allPhotos[selectedIdx].name} className="max-h-full max-w-full object-contain" />
+                  {filteredPhotos[selectedIdx]?.url && (
+                    <img src={filteredPhotos[selectedIdx].url} alt={filteredPhotos[selectedIdx].name} className="max-h-full max-w-full object-contain" />
                   )}
                 </div>
                 <div className="flex items-center justify-between mt-2 text-sm">
                   <button type="button" onClick={selectPrev} className="px-3 py-1.5 border rounded">Previous</button>
-                  <div className="text-gray-600 truncate mx-2 flex-1 text-center" title={allPhotos[selectedIdx]?.name}>{allPhotos[selectedIdx]?.name || 'Photo'}</div>
+                  <div className="text-gray-600 truncate mx-2 flex-1 text-center" title={filteredPhotos[selectedIdx]?.name}>{filteredPhotos[selectedIdx]?.name || 'Photo'}</div>
                   <div className="flex gap-2">
                     <button type="button" onClick={() => openLightbox(selectedIdx)} className="px-3 py-1.5 border rounded">Fullscreen</button>
                     <button type="button" onClick={selectNext} className="px-3 py-1.5 border rounded">Next</button>
@@ -945,7 +996,7 @@ function AllPhotosModal({ events, selectedCategories, onClose, onToggleCategory,
 
               {/* Thumbnail grid */}
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
-                {allPhotos.map((p, i) => (
+                {filteredPhotos.map((p, i) => (
               <button
                     key={p.id}
                 type="button"
@@ -956,7 +1007,7 @@ function AllPhotosModal({ events, selectedCategories, onClose, onToggleCategory,
                     <img src={p.url} alt={p.name} className="w-full h-32 object-cover" />
                     <div className="p-2 text-[11px] text-gray-700 text-left">
                         <div className="font-medium truncate" title={p.name}>{p.name}</div>
-                      <div className="text-gray-500">{allCategories[p.category]?.label || p.category}</div>
+                      <div className="text-gray-500">{allCategories[p.category || 'untagged']?.label || (p.category || 'Untagged')}</div>
                       </div>
                   </button>
                 ))}
@@ -977,7 +1028,7 @@ function AllPhotosModal({ events, selectedCategories, onClose, onToggleCategory,
         </div>
       </div>
 
-      {lightboxIdx !== null && allPhotos[lightboxIdx] && (
+      {lightboxIdx !== null && filteredPhotos[lightboxIdx] && (
         <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
           <button onClick={closeLightbox} className="absolute top-4 right-4 text-white hover:text-gray-200">
             <X className="w-6 h-6" />
@@ -985,10 +1036,10 @@ function AllPhotosModal({ events, selectedCategories, onClose, onToggleCategory,
           <button onClick={lbPrev} className="absolute left-4 text-white hover:text-gray-200 p-2"><ChevronLeft className="w-8 h-8" /></button>
           <div className="max-w-5xl w-full">
             <div className="w-full h-[70vh] bg-black flex items-center justify-center">
-              <img src={allPhotos[lightboxIdx].url} alt={allPhotos[lightboxIdx].name} className="max-h-full max-w-full object-contain" />
+              <img src={filteredPhotos[lightboxIdx].url} alt={filteredPhotos[lightboxIdx].name} className="max-h-full max-w-full object-contain" />
             </div>
             <div className="mt-3 text-center text-white text-sm">
-              {allPhotos[lightboxIdx].name}
+              {filteredPhotos[lightboxIdx].name}
             </div>
           </div>
           <button onClick={lbNext} className="absolute right-4 text-white hover:text-gray-200 p-2"><ChevronRight className="w-8 h-8" /></button>
@@ -999,25 +1050,90 @@ function AllPhotosModal({ events, selectedCategories, onClose, onToggleCategory,
 }
 
 // New standalone Manage Photos modal (upload/view/delete)
-function ManagePhotosModal({ events, onClose }) {
-  const [uploaded, setUploaded] = useState([]); // {id,url,name}
+function ManagePhotosModal({ allCategories, onClose, onPhotosUpdated }) {
+  const [photos, setPhotos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
   const inputRef = useRef(null);
   const contentRef = useRef(null);
 
-  const handleFiles = (files) => {
+  useEffect(() => {
+    const loadPhotos = async () => {
+      try {
+        setLoading(true);
+        const allPhotos = await fetchPhotos();
+        setPhotos(allPhotos);
+      } catch (err) {
+        console.error('Error loading photos:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadPhotos();
+  }, []);
+
+  const handleFiles = async (files) => {
     const arr = Array.from(files || []);
-    const readers = arr.map((file) => new Promise((resolve) => {
-      const r = new FileReader();
-      r.onload = () => resolve({ id: `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2)}`, url: r.result, name: file.name });
-      r.readAsDataURL(file);
-    }));
-    Promise.all(readers).then((items) => setUploaded((prev) => [...prev, ...items]));
+    setUploading(true);
+    try {
+      const readers = arr.map((file) => new Promise((resolve) => {
+        const r = new FileReader();
+        r.onload = () => resolve({ url: r.result, name: file.name });
+        r.readAsDataURL(file);
+      }));
+      const items = await Promise.all(readers);
+      
+      // Save each photo to Supabase
+      const savedPhotos = await Promise.all(
+        items.map(item => createPhoto({ ...item, category: 'untagged' }))
+      );
+      
+      setPhotos(prev => [...savedPhotos, ...prev]);
+      if (onPhotosUpdated) onPhotosUpdated();
+    } catch (err) {
+      console.error('Error uploading photos:', err);
+      alert('Failed to upload some photos. Please try again.');
+    } finally {
+      setUploading(false);
+    }
   };
 
   const onDrop = (e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); };
   const onDragOver = (e) => e.preventDefault();
-  const removeOne = (id) => setUploaded((prev) => prev.filter(p => p.id !== id));
-  const clearAll = () => setUploaded([]);
+  
+  const removeOne = async (id) => {
+    try {
+      await deletePhoto(id);
+      setPhotos(prev => prev.filter(p => p.id !== id));
+      if (onPhotosUpdated) onPhotosUpdated();
+    } catch (err) {
+      console.error('Error deleting photo:', err);
+      alert('Failed to delete photo. Please try again.');
+    }
+  };
+  
+  const clearAll = async () => {
+    if (!window.confirm('Are you sure you want to delete all photos?')) return;
+    try {
+      await Promise.all(photos.map(p => deletePhoto(p.id)));
+      setPhotos([]);
+      if (onPhotosUpdated) onPhotosUpdated();
+    } catch (err) {
+      console.error('Error deleting photos:', err);
+      alert('Failed to delete some photos. Please try again.');
+    }
+  };
+  
+  const updatePhotoCategory = async (photoId, category) => {
+    try {
+      const updated = await updatePhoto(photoId, { category });
+      setPhotos(prev => prev.map(p => p.id === photoId ? updated : p));
+      if (onPhotosUpdated) onPhotosUpdated();
+    } catch (err) {
+      console.error('Error updating photo category:', err);
+      alert('Failed to update photo category. Please try again.');
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
@@ -1041,18 +1157,40 @@ function ManagePhotosModal({ events, onClose }) {
             <input ref={inputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
           </div>
 
-          {uploaded.length > 0 && (
+          {uploading && (
+            <div className="mt-4 text-center py-4">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
+              <div className="text-sm text-gray-600">Uploading photos...</div>
+            </div>
+          )}
+
+          {loading ? (
+            <div className="mt-4 text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+              <div className="text-sm text-gray-600">Loading photos...</div>
+            </div>
+          ) : photos.length > 0 && (
             <div className="mt-4">
               <div className="flex items-center justify-between mb-2">
-                <div className="text-sm text-gray-700">Uploaded this session: {uploaded.length}</div>
-                <button type="button" onClick={clearAll} className="text-xs px-2 py-1 border rounded">Clear All</button>
+                <div className="text-sm text-gray-700">Total photos: {photos.length}</div>
+                <button type="button" onClick={clearAll} className="text-xs px-2 py-1 border rounded hover:bg-red-50">Clear All</button>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
-                {uploaded.map((p) => (
+                {photos.map((p) => (
                   <div key={p.id} className="relative group">
                     <img src={p.url} alt={p.name} className="w-full h-28 object-cover rounded" />
                     <div className="absolute inset-x-0 bottom-0 bg-black/50 text-white text-[11px] px-1 py-0.5 truncate">{p.name}</div>
-                    <button type="button" onClick={() => removeOne(p.id)} className="absolute top-1 right-1 hidden group-hover:block text-[10px] px-1.5 py-0.5 bg-white/90 border rounded">Delete</button>
+                    <button type="button" onClick={() => removeOne(p.id)} className="absolute top-1 right-1 hidden group-hover:block text-[10px] px-1.5 py-0.5 bg-white/90 border rounded hover:bg-red-50">Delete</button>
+                    <select
+                      value={p.category || 'untagged'}
+                      onChange={(e) => updatePhotoCategory(p.id, e.target.value)}
+                      className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-[10px] px-1 py-0.5 w-full"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {Object.entries(allCategories).map(([key, config]) => (
+                        <option key={key} value={key}>{config.label}</option>
+                      ))}
+                    </select>
                   </div>
                 ))}
               </div>
@@ -1275,8 +1413,41 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
     recordings: initialEvent?.recordings || []
   });
   const [imagePreview, setImagePreview] = useState(initialEvent?.image || null);
+  const [taggedPhotos, setTaggedPhotos] = useState([]);
+  const [availablePhotos, setAvailablePhotos] = useState([]);
+  const [showPhotoSelector, setShowPhotoSelector] = useState(false);
   const fileInputRef = useRef(null);
   const galleryInputRef = useRef(null);
+
+  // Load tagged photos when editing
+  useEffect(() => {
+    const loadTaggedPhotos = async () => {
+      if (isEdit && initialEvent?.id) {
+        try {
+          const photos = await getPhotosForEvent(initialEvent.id);
+          setTaggedPhotos(photos);
+        } catch (err) {
+          console.error('Error loading tagged photos:', err);
+        }
+      }
+    };
+    loadTaggedPhotos();
+  }, [isEdit, initialEvent?.id]);
+
+  // Load available photos for selection
+  useEffect(() => {
+    const loadAvailablePhotos = async () => {
+      try {
+        const photos = await fetchPhotos();
+        setAvailablePhotos(photos);
+      } catch (err) {
+        console.error('Error loading available photos:', err);
+      }
+    };
+    if (showPhotoSelector) {
+      loadAvailablePhotos();
+    }
+  }, [showPhotoSelector]);
 
   // Journal local draft
   const [journalDraft, setJournalDraft] = useState({ title: '', content: '', attachments: [] });
@@ -1425,17 +1596,41 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
     }
   };
 
-  const handleGalleryUpload = (e) => {
+  const handleGalleryUpload = async (e) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
-    const readers = files.map((file) => new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (ev) => resolve({ id: `${Date.now()}-${file.name}`, url: ev.target.result, name: file.name });
-      reader.readAsDataURL(file);
-    }));
-    Promise.all(readers).then((items) => {
-      setFormData((prev) => ({ ...prev, images: [...(prev.images || []), ...items] }));
-    });
+    try {
+      const readers = files.map((file) => new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => resolve({ url: ev.target.result, name: file.name });
+        reader.readAsDataURL(file);
+      }));
+      const items = await Promise.all(readers);
+      
+      // Save photos to Supabase and tag them
+      const savedPhotos = await Promise.all(
+        items.map(item => createPhoto({ ...item, category: formData.category }))
+      );
+      
+      // Add to tagged photos (will be tagged when event is saved)
+      setTaggedPhotos(prev => [...prev, ...savedPhotos]);
+    } catch (err) {
+      console.error('Error uploading photos:', err);
+      alert('Failed to upload photos. Please try again.');
+    }
+  };
+
+  const handleSelectPhoto = async (photoId) => {
+    // Add photo to tagged list (will be tagged when event is saved)
+    const photo = availablePhotos.find(p => p.id === photoId);
+    if (photo && !taggedPhotos.find(p => p.id === photoId)) {
+      setTaggedPhotos(prev => [...prev, photo]);
+      setShowPhotoSelector(false);
+    }
+  };
+
+  const handleUntagPhoto = (photoId) => {
+    setTaggedPhotos(prev => prev.filter(p => p.id !== photoId));
   };
 
   // eslint-disable-next-line no-unused-vars
@@ -1446,26 +1641,54 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
     }));
   };
 
-  const removeGalleryItem = (id) => {
-    setFormData((prev) => ({
-      ...prev,
-      images: (prev.images || []).filter((img) => img.id !== id)
-    }));
-  };
+  // removeGalleryItem is now handled by handleUntagPhoto
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (formData.title && formData.date) {
       const normalized = {
-        id: isEdit ? initialEvent.id : Date.now(),
+        ...(isEdit ? { id: initialEvent.id } : {}), // Only include ID if editing
         ...formData,
         date: new Date(formData.date),
         importance: parseInt(formData.importance),
-        images: formData.images || [],
+        images: [], // Keep for backward compatibility but use tagging
         journals: formData.journals || [],
         recordings: recordings || []
       };
-      onSave(normalized);
+      
+      // Save event first (this will create/update the event and return the ID)
+      const savedEvent = await onSave(normalized);
+      const eventId = savedEvent?.id || (isEdit ? initialEvent.id : null);
+      
+      // Then tag photos to the event
+      if (eventId) {
+        try {
+          // Get current tagged photos for this event
+          const currentTagged = isEdit ? await getPhotosForEvent(eventId) : [];
+          const currentTaggedIds = new Set(currentTagged.map(p => p.id));
+          const newTaggedIds = new Set(taggedPhotos.map(p => p.id));
+          
+          // Tag new photos
+          for (const photo of taggedPhotos) {
+            if (!currentTaggedIds.has(photo.id)) {
+              await tagPhotoToEvent(photo.id, eventId);
+              // Update photo category to match event category
+              await updatePhoto(photo.id, { category: formData.category });
+            }
+          }
+          
+          // Untag removed photos
+          for (const photo of currentTagged) {
+            if (!newTaggedIds.has(photo.id)) {
+              await untagPhotoFromEvent(photo.id, eventId);
+            }
+          }
+        } catch (err) {
+          console.error('Error tagging photos:', err);
+          // Don't block the save, just log the error
+        }
+      }
+      
       onClose();
     }
   };
@@ -1542,7 +1765,7 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
                     <Camera className="w-5 h-5" />
                     Photos
                   </h3>
-                  <span className="text-sm text-gray-500">{(formData.images || []).length + (formData.image ? 1 : 0)} items</span>
+                  <span className="text-sm text-gray-500">{taggedPhotos.length} photos</span>
                 </div>
                 
                 <div className="space-y-4">
@@ -1565,31 +1788,72 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
                     <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
                   </div>
 
-                  {/* Additional Photos */}
+                  {/* Tagged Photos */}
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <label className="text-sm font-medium text-gray-700">Additional Photos</label>
-                      <button type="button" onClick={() => galleryInputRef.current?.click()} className="text-sm text-blue-600 hover:underline">Add Photos</button>
+                      <label className="text-sm font-medium text-gray-700">Event Photos</label>
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => setShowPhotoSelector(true)} className="text-sm text-blue-600 hover:underline">Select from Library</button>
+                        <button type="button" onClick={() => galleryInputRef.current?.click()} className="text-sm text-blue-600 hover:underline">Upload New</button>
+                      </div>
                     </div>
                     <input ref={galleryInputRef} type="file" accept="image/*" multiple onChange={handleGalleryUpload} className="hidden" />
                     
-                    {(formData.images || []).length > 0 && (
+                    {taggedPhotos.length > 0 && (
                       <div className="grid grid-cols-2 gap-2">
-                        {(formData.images || []).map((img) => (
-                          <div key={img.id} className="relative group">
-                            <img src={img.url} alt={img.name} className="w-full h-20 object-cover rounded" />
+                        {taggedPhotos.map((photo) => (
+                          <div key={photo.id} className="relative group">
+                            <img src={photo.url} alt={photo.name} className="w-full h-20 object-cover rounded" />
                             <button
                               type="button"
-                              onClick={() => removeGalleryItem(img.id)}
+                              onClick={() => handleUntagPhoto(photo.id)}
                               className="absolute top-1 right-1 hidden group-hover:block text-xs px-1.5 py-0.5 bg-red-500 text-white rounded"
                             >
                               ×
                             </button>
+                            <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[10px] px-1 py-0.5 truncate">{photo.name}</div>
                           </div>
                         ))}
                       </div>
                     )}
                   </div>
+                  
+                  {/* Photo Selector Modal */}
+                  {showPhotoSelector && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+                        <div className="flex items-center justify-between p-4 border-b">
+                          <h3 className="text-lg font-semibold">Select Photos from Library</h3>
+                          <button onClick={() => setShowPhotoSelector(false)} className="text-gray-500 hover:text-gray-700">
+                            <X className="w-5 h-5" />
+                          </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-4">
+                          {availablePhotos.length === 0 ? (
+                            <div className="text-center py-8 text-gray-500">No photos available. Upload photos in Manage Photos first.</div>
+                          ) : (
+                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                              {availablePhotos
+                                .filter(p => !taggedPhotos.find(tp => tp.id === p.id))
+                                .map((photo) => (
+                                <button
+                                  key={photo.id}
+                                  type="button"
+                                  onClick={() => handleSelectPhoto(photo.id)}
+                                  className="relative group aspect-square"
+                                >
+                                  <img src={photo.url} alt={photo.name} className="w-full h-full object-cover rounded" />
+                                  <div className="absolute inset-0 bg-blue-500/0 group-hover:bg-blue-500/20 transition-colors rounded flex items-center justify-center">
+                                    <span className="text-white text-xs opacity-0 group-hover:opacity-100">Select</span>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -2084,81 +2348,20 @@ function EventFull() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
   const timelineRef = useRef(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   
   // Timelines management
-  const [timelines, setTimelines] = useState(() => {
-    try {
-      const saved = localStorage.getItem('eventfull:timelines');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return parsed.length > 0 ? parsed : [{ id: 'default', name: 'My Timeline', eventCount: 0 }];
-      }
-      return [{ id: 'default', name: 'My Timeline', eventCount: 0 }];
-    } catch {
-      return [{ id: 'default', name: 'My Timeline', eventCount: 0 }];
-    }
-  });
-  
-  const [currentTimelineId, setCurrentTimelineId] = useState(() => {
-    try {
-      return localStorage.getItem('eventfull:currentTimelineId') || 'default';
-    } catch {
-      return 'default';
-    }
-  });
-
-  // Load events for current timeline
-  const loadEventsForTimeline = (timelineId) => {
-    try {
-      const saved = localStorage.getItem(`eventfull:events:${timelineId}`);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        // Convert date strings back to Date objects
-        return parsed.map(e => ({
-          ...e,
-          date: new Date(e.date)
-        }));
-      }
-      return [];
-    } catch {
-      return [];
-    }
-  };
-
-  // Events state - loads events for current timeline
-  const [events, setEvents] = useState(() => {
-    const timelineId = (() => {
-      try {
-        return localStorage.getItem('eventfull:currentTimelineId') || 'default';
-      } catch {
-        return 'default';
-      }
-    })();
-    const loaded = loadEventsForTimeline(timelineId);
-    return loaded.length > 0 ? loaded : sampleEvents;
-  });
-  
+  const [timelines, setTimelines] = useState([{ id: 'default', name: 'My Timeline', event_count: 0 }]);
+  const [currentTimelineId, setCurrentTimelineId] = useState('default');
+  const [events, setEvents] = useState([]);
   const [showTimelineModal, setShowTimelineModal] = useState(false);
   
   // Shared users for timelines
-  const [sharedUsers, setSharedUsers] = useState(() => {
-    try {
-      const saved = localStorage.getItem('eventfull:sharedUsers');
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
+  const [sharedUsers, setSharedUsers] = useState({});
   
-  // Load custom categories from localStorage
-  const [customCategories] = useState(() => {
-    try { 
-      const saved = localStorage.getItem('eventfull:customCategories');
-      return saved ? JSON.parse(saved) : {}; 
-    } catch { 
-      return {}; 
-    }
-  });
+  // Custom categories and settings
+  const [customCategories, setCustomCategories] = useState({});
 
   // Get all categories (default + custom)
   const getAllCategories = () => {
@@ -2183,92 +2386,175 @@ function EventFull() {
   const [galleryStartIndex, setGalleryStartIndex] = useState(0);
   const [showBackgroundPicker, setShowBackgroundPicker] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [backgroundUrl, setBackgroundUrl] = useState(() => {
-    try { return localStorage.getItem('eventfull:bg') || ''; } catch { return ''; }
-  });
+  const [backgroundUrl, setBackgroundUrl] = useState('');
 
+  // Load initial data from Supabase
   useEffect(() => {
-    try {
-      if (backgroundUrl) localStorage.setItem('eventfull:bg', backgroundUrl); else localStorage.removeItem('eventfull:bg');
-    } catch {}
-  }, [backgroundUrl]);
+    const loadInitialData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
 
-  // Save timelines to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem('eventfull:timelines', JSON.stringify(timelines));
-    } catch {}
-  }, [timelines]);
+        // Load timelines
+        const loadedTimelines = await fetchTimelines();
+        if (loadedTimelines.length === 0) {
+          // Create default timeline if none exist
+          const defaultTimeline = {
+            id: 'default',
+            name: 'My Timeline',
+            event_count: 0
+          };
+          try {
+            await createTimeline(defaultTimeline);
+            setTimelines([defaultTimeline]);
+          } catch (err) {
+            console.error('Error creating default timeline:', err);
+            setTimelines([defaultTimeline]);
+          }
+        } else {
+          setTimelines(loadedTimelines);
+          // Set current timeline ID from localStorage (fallback) or first timeline
+          const savedTimelineId = localStorage.getItem('eventfull:currentTimelineId') || loadedTimelines[0].id;
+          setCurrentTimelineId(savedTimelineId);
+        }
 
-  // Save current timeline ID to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem('eventfull:currentTimelineId', currentTimelineId);
-    } catch {}
-  }, [currentTimelineId]);
+        // Load user settings (custom categories, background)
+        const settings = await fetchUserSettings();
+        if (settings) {
+          setCustomCategories(settings.custom_categories || {});
+          setBackgroundUrl(settings.background_url || '');
+        }
 
-  // Save shared users to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem('eventfull:sharedUsers', JSON.stringify(sharedUsers));
-    } catch {}
-  }, [sharedUsers]);
+        // Load shared timelines
+        const shared = await fetchSharedTimelines();
+        const sharedMap = {};
+        shared.forEach(share => {
+          if (!sharedMap[share.timeline_id]) {
+            sharedMap[share.timeline_id] = [];
+          }
+          sharedMap[share.timeline_id].push(share.shared_with_email);
+        });
+        setSharedUsers(sharedMap);
 
-  // Save events to localStorage for current timeline
-  useEffect(() => {
-    try {
-      // Convert dates to ISO strings for storage
-      const eventsToSave = events.map(e => ({
-        ...e,
-        date: e.date.toISOString()
-      }));
-      localStorage.setItem(`eventfull:events:${currentTimelineId}`, JSON.stringify(eventsToSave));
-      
-      // Update event count for current timeline
-      setTimelines(prev => prev.map(t => ({
-        ...t,
-        eventCount: t.id === currentTimelineId ? events.length : (t.eventCount || 0)
-      })));
-    } catch (e) {
-      console.error('Failed to save events', e);
+      } catch (err) {
+        console.error('Error loading initial data:', err);
+        const errorMessage = err.message || 'Failed to load data';
+        if (errorMessage.includes('Supabase is not configured')) {
+          setError('Database connection error. Please check your configuration.');
+        } else if (errorMessage.includes('Missing Supabase')) {
+          setError('Database configuration missing. Please contact support.');
+        } else {
+          setError('Failed to load data. Please refresh the page.');
+        }
+        // Fallback to sample events if Supabase fails
+        setEvents(sampleEvents);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadInitialData();
+    
+    // Test Supabase connection on mount (development only)
+    if (process.env.NODE_ENV === 'development') {
+      testConnection().then(results => {
+        if (!results.connected) {
+          console.warn('⚠️ Supabase connection test failed:', results.errors);
+        }
+      });
     }
-  }, [events, currentTimelineId]);
+  }, []);
+
+  // Load events when timeline changes
+  useEffect(() => {
+    const loadEvents = async () => {
+      if (!currentTimelineId) return;
+      
+      try {
+        const loadedEvents = await fetchEvents(currentTimelineId);
+        if (loadedEvents.length > 0) {
+          setEvents(loadedEvents);
+        } else {
+          // If no events and this is the default timeline, use sample events
+          if (currentTimelineId === 'default') {
+            setEvents(sampleEvents);
+          } else {
+            setEvents([]);
+          }
+        }
+      } catch (err) {
+        console.error('Error loading events:', err);
+        setEvents([]);
+      }
+    };
+
+    if (!loading) {
+      loadEvents();
+    }
+  }, [currentTimelineId, loading]);
+
+  // Save background to Supabase
+  useEffect(() => {
+    const saveBackground = async () => {
+      try {
+        await updateUserSettings({ background_url: backgroundUrl || null });
+      } catch (err) {
+        console.error('Error saving background:', err);
+      }
+    };
+
+    if (!loading && backgroundUrl !== undefined) {
+      saveBackground();
+    }
+  }, [backgroundUrl, loading]);
+
+  // Save custom categories to Supabase
+  useEffect(() => {
+    const saveCategories = async () => {
+      try {
+        await updateUserSettings({ custom_categories: customCategories });
+      } catch (err) {
+        console.error('Error saving categories:', err);
+      }
+    };
+
+    if (!loading && Object.keys(customCategories).length >= 0) {
+      saveCategories();
+    }
+  }, [customCategories, loading]);
 
 
   // Timeline management functions
-  const handleCreateTimeline = (name) => {
+  const handleCreateTimeline = async (name) => {
     const newTimeline = {
       id: `timeline-${Date.now()}`,
       name,
-      eventCount: 0,
-      createdAt: new Date().toISOString()
+      event_count: 0
     };
-    setTimelines(prev => [...prev, newTimeline]);
-    setCurrentTimelineId(newTimeline.id);
-    // Initialize empty events for new timeline
-    setEvents([]);
-    // Save empty events array to localStorage
     try {
-      localStorage.setItem(`eventfull:events:${newTimeline.id}`, JSON.stringify([]));
-    } catch {}
+      await createTimeline(newTimeline);
+      setTimelines(prev => [...prev, newTimeline]);
+      setCurrentTimelineId(newTimeline.id);
+      setEvents([]);
+      localStorage.setItem('eventfull:currentTimelineId', newTimeline.id);
+    } catch (err) {
+      console.error('Error creating timeline:', err);
+      alert('Failed to create timeline. Please try again.');
+    }
   };
 
-  const handleSelectTimeline = (timelineId) => {
-    // Save current events before switching
-    try {
-      const eventsToSave = events.map(e => ({
-        ...e,
-        date: e.date.toISOString()
-      }));
-      localStorage.setItem(`eventfull:events:${currentTimelineId}`, JSON.stringify(eventsToSave));
-    } catch {}
-    
-    // Switch to new timeline
+  const handleSelectTimeline = async (timelineId) => {
     setCurrentTimelineId(timelineId);
+    localStorage.setItem('eventfull:currentTimelineId', timelineId);
     
     // Load events for the selected timeline
-    const loadedEvents = loadEventsForTimeline(timelineId);
-    setEvents(loadedEvents.length > 0 ? loadedEvents : []);
+    try {
+      const loadedEvents = await fetchEvents(timelineId);
+      setEvents(loadedEvents.length > 0 ? loadedEvents : []);
+    } catch (err) {
+      console.error('Error loading events:', err);
+      setEvents([]);
+    }
     
     // Reset selected event and close any open modals
     setSelectedEvent(null);
@@ -2276,49 +2562,63 @@ function EventFull() {
     setEditingEvent(null);
   };
 
-  const handleDeleteTimeline = (timelineId) => {
+  const handleDeleteTimeline = async (timelineId) => {
     if (window.confirm('Are you sure you want to delete this timeline? All events will be lost.')) {
-      // Delete events from localStorage
       try {
-        localStorage.removeItem(`eventfull:events:${timelineId}`);
-      } catch {}
-      
-      setTimelines(prev => {
-        const filtered = prev.filter(t => t.id !== timelineId);
-        // If we deleted the current timeline, switch to the first one
-        if (timelineId === currentTimelineId && filtered.length > 0) {
-          const newTimelineId = filtered[0].id;
-          setCurrentTimelineId(newTimelineId);
-          // Load events for the new timeline
-          const loadedEvents = loadEventsForTimeline(newTimelineId);
-          setEvents(loadedEvents.length > 0 ? loadedEvents : []);
-        } else if (filtered.length === 0) {
-          // If no timelines left, create default
-          setEvents([]);
-        }
-        return filtered;
-      });
+        await deleteTimeline(timelineId);
+        setTimelines(prev => {
+          const filtered = prev.filter(t => t.id !== timelineId);
+          // If we deleted the current timeline, switch to the first one
+          if (timelineId === currentTimelineId && filtered.length > 0) {
+            const newTimelineId = filtered[0].id;
+            setCurrentTimelineId(newTimelineId);
+            localStorage.setItem('eventfull:currentTimelineId', newTimelineId);
+            fetchEvents(newTimelineId).then(loadedEvents => {
+              setEvents(loadedEvents.length > 0 ? loadedEvents : []);
+            });
+          } else if (filtered.length === 0) {
+            // If no timelines left, create default
+            setEvents([]);
+          }
+          return filtered;
+        });
+      } catch (err) {
+        console.error('Error deleting timeline:', err);
+        alert('Failed to delete timeline. Please try again.');
+      }
     }
   };
 
-  const handleRenameTimeline = (timelineId, newName) => {
-    setTimelines(prev => prev.map(t => 
-      t.id === timelineId ? { ...t, name: newName } : t
-    ));
+  const handleRenameTimeline = async (timelineId, newName) => {
+    try {
+      await updateTimeline(timelineId, { name: newName });
+      setTimelines(prev => prev.map(t => 
+        t.id === timelineId ? { ...t, name: newName } : t
+      ));
+    } catch (err) {
+      console.error('Error renaming timeline:', err);
+      alert('Failed to rename timeline. Please try again.');
+    }
   };
 
-  const handleShareTimeline = (timelineId, userEmail) => {
-    setSharedUsers(prev => {
-      const timelineShares = prev[timelineId] || [];
-      // Avoid duplicates
-      if (!timelineShares.includes(userEmail.toLowerCase())) {
-        return {
-          ...prev,
-          [timelineId]: [...timelineShares, userEmail.toLowerCase()]
-        };
-      }
-      return prev;
-    });
+  const handleShareTimeline = async (timelineId, userEmail) => {
+    try {
+      await shareTimeline(timelineId, userEmail);
+      setSharedUsers(prev => {
+        const timelineShares = prev[timelineId] || [];
+        // Avoid duplicates
+        if (!timelineShares.includes(userEmail.toLowerCase())) {
+          return {
+            ...prev,
+            [timelineId]: [...timelineShares, userEmail.toLowerCase()]
+          };
+        }
+        return prev;
+      });
+    } catch (err) {
+      console.error('Error sharing timeline:', err);
+      alert('Failed to share timeline. Please try again.');
+    }
   };
 
   // Sort events by date
@@ -2345,9 +2645,55 @@ function EventFull() {
     setSelectedCategories(new Set(allCategoryKeys));
   };
 
-  const addEvent = (newEvent) => {
-    setEvents([...events, newEvent]);
+  const addEvent = async (newEvent) => {
+    try {
+      const eventToSave = {
+        ...newEvent,
+        timeline_id: currentTimelineId
+      };
+      const createdEvent = await createEvent(eventToSave);
+      setEvents([...events, createdEvent]);
+      // Update timeline event count
+      await updateTimeline(currentTimelineId, { event_count: events.length + 1 });
+      setTimelines(prev => prev.map(t => 
+        t.id === currentTimelineId ? { ...t, event_count: (t.event_count || 0) + 1 } : t
+      ));
+      return createdEvent; // Return event so EventForm can get the ID
+    } catch (err) {
+      console.error('Error adding event:', err);
+      alert('Failed to add event. Please try again.');
+      throw err;
+    }
   };
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="w-full h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading your timeline...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="w-full h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center bg-white p-6 rounded-lg shadow-lg max-w-md">
+          <p className="text-red-600 mb-4">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Reload Page
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // If no events, show timeline with empty state but allow adding events
   if (sortedEvents.length === 0) {
@@ -2527,7 +2873,6 @@ function EventFull() {
         {/* Other modals */}
         {showAllPhotos && (
           <AllPhotosModal
-            events={events}
             selectedCategories={selectedCategories}
             onToggleCategory={toggleCategory}
             onSelectAll={selectAllCategories}
@@ -2538,8 +2883,9 @@ function EventFull() {
 
         {showManagePhotos && (
           <ManagePhotosModal
-            events={events}
+            allCategories={allCategories}
             onClose={() => setShowManagePhotos(false)}
+            onPhotosUpdated={() => {}}
           />
         )}
 
@@ -2560,6 +2906,8 @@ function EventFull() {
             onSelectBackground={(url) => setBackgroundUrl(url)}
             onClearBackground={() => setBackgroundUrl('')}
             onClose={() => setShowSettings(false)}
+            customCategories={customCategories}
+            onUpdateCategories={setCustomCategories}
           />
         )}
 
@@ -2624,12 +2972,41 @@ function EventFull() {
     return age;
   };
 
-  const saveEditedEvent = (updatedEvent) => {
-    setEvents(events.map(e => (e.id === updatedEvent.id ? updatedEvent : e)));
+  const saveEditedEvent = async (updatedEvent) => {
+    try {
+      const savedEvent = await updateEvent(updatedEvent.id, {
+        title: updatedEvent.title,
+        description: updatedEvent.description,
+        date: updatedEvent.date,
+        category: updatedEvent.category,
+        importance: updatedEvent.importance,
+        image_url: updatedEvent.image,
+        images: updatedEvent.images || [],
+        journals: updatedEvent.journals || [],
+        recordings: updatedEvent.recordings || []
+      });
+      setEvents(events.map(e => (e.id === updatedEvent.id ? savedEvent : e)));
+      return savedEvent; // Return event so EventForm can get the ID
+    } catch (err) {
+      console.error('Error updating event:', err);
+      alert('Failed to update event. Please try again.');
+      throw err;
+    }
   };
 
-  const deleteEvent = (eventToDelete) => {
-    setEvents(events.filter(e => e.id !== eventToDelete.id));
+  const handleDeleteEvent = async (eventToDelete) => {
+    try {
+      await deleteEvent(eventToDelete.id);
+      setEvents(events.filter(e => e.id !== eventToDelete.id));
+      // Update timeline event count
+      await updateTimeline(currentTimelineId, { event_count: events.length - 1 });
+      setTimelines(prev => prev.map(t => 
+        t.id === currentTimelineId ? { ...t, event_count: Math.max(0, (t.event_count || 0) - 1) } : t
+      ));
+    } catch (err) {
+      console.error('Error deleting event:', err);
+      alert('Failed to delete event. Please try again.');
+    }
   };
 
   const openEventGallery = (formDataLike, startIndex) => {
@@ -3059,7 +3436,7 @@ function EventFull() {
           initialEvent={editingEvent}
           onClose={() => { setEditingEvent(null); setSelectedEvent(null); }}
           onSave={saveEditedEvent}
-          onDelete={deleteEvent}
+          onDelete={handleDeleteEvent}
           onOpenGallery={(formDataLike, idx) => openEventGallery(formDataLike, idx)}
           allCategories={allCategories}
         />
@@ -3077,7 +3454,6 @@ function EventFull() {
       {/* All Photos Modal */}
       {showAllPhotos && (
         <AllPhotosModal
-          events={events}
           selectedCategories={selectedCategories}
           onToggleCategory={toggleCategory}
           onSelectAll={selectAllCategories}
@@ -3089,8 +3465,9 @@ function EventFull() {
   {/* Manage Photos Modal */}
   {showManagePhotos && (
     <ManagePhotosModal
-      events={events}
+      allCategories={allCategories}
       onClose={() => setShowManagePhotos(false)}
+      onPhotosUpdated={() => {}}
         />
       )}
 
@@ -3123,6 +3500,8 @@ function EventFull() {
           onSelectBackground={(url) => setBackgroundUrl(url)}
           onClearBackground={() => setBackgroundUrl('')}
           onClose={() => setShowSettings(false)}
+          customCategories={customCategories}
+          onUpdateCategories={setCustomCategories}
         />
       )}
 
