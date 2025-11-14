@@ -74,71 +74,92 @@ ALTER TABLE photo_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_settings ENABLE ROW LEVEL SECURITY;
 
 -- Events policies (temporary: allows guest users, should be updated with proper auth)
+DROP POLICY IF EXISTS "Users can view own events" ON events;
 CREATE POLICY "Users can view own events" ON events
   FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Users can insert own events" ON events;
 CREATE POLICY "Users can insert own events" ON events
   FOR INSERT WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Users can update own events" ON events;
 CREATE POLICY "Users can update own events" ON events
   FOR UPDATE USING (true);
 
+DROP POLICY IF EXISTS "Users can delete own events" ON events;
 CREATE POLICY "Users can delete own events" ON events
   FOR DELETE USING (true);
 
 -- Timelines policies (temporary: allows guest users, should be updated with proper auth)
+DROP POLICY IF EXISTS "Users can view own timelines" ON timelines;
 CREATE POLICY "Users can view own timelines" ON timelines
   FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Users can insert own timelines" ON timelines;
 CREATE POLICY "Users can insert own timelines" ON timelines
   FOR INSERT WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Users can update own timelines" ON timelines;
 CREATE POLICY "Users can update own timelines" ON timelines
   FOR UPDATE USING (true);
 
+DROP POLICY IF EXISTS "Users can delete own timelines" ON timelines;
 CREATE POLICY "Users can delete own timelines" ON timelines
   FOR DELETE USING (true);
 
 -- Shared timelines policies (temporary: allows guest users)
+DROP POLICY IF EXISTS "Users can view shared timelines" ON shared_timelines;
 CREATE POLICY "Users can view shared timelines" ON shared_timelines
   FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Users can insert shared timelines" ON shared_timelines;
 CREATE POLICY "Users can insert shared timelines" ON shared_timelines
   FOR INSERT WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Users can delete shared timelines" ON shared_timelines;
 CREATE POLICY "Users can delete shared timelines" ON shared_timelines
   FOR DELETE USING (true);
 
 -- Photos policies (temporary: allows guest users)
+DROP POLICY IF EXISTS "Users can view own photos" ON photos;
 CREATE POLICY "Users can view own photos" ON photos
   FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Users can insert own photos" ON photos;
 CREATE POLICY "Users can insert own photos" ON photos
   FOR INSERT WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Users can update own photos" ON photos;
 CREATE POLICY "Users can update own photos" ON photos
   FOR UPDATE USING (true);
 
+DROP POLICY IF EXISTS "Users can delete own photos" ON photos;
 CREATE POLICY "Users can delete own photos" ON photos
   FOR DELETE USING (true);
 
 -- Photo-Event junction policies (temporary: allows guest users)
+DROP POLICY IF EXISTS "Users can view photo events" ON photo_events;
 CREATE POLICY "Users can view photo events" ON photo_events
   FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Users can insert photo events" ON photo_events;
 CREATE POLICY "Users can insert photo events" ON photo_events
   FOR INSERT WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Users can delete photo events" ON photo_events;
 CREATE POLICY "Users can delete photo events" ON photo_events
   FOR DELETE USING (true);
 
 -- User settings policies (temporary: allows guest users)
+DROP POLICY IF EXISTS "Users can view own settings" ON user_settings;
 CREATE POLICY "Users can view own settings" ON user_settings
   FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Users can insert own settings" ON user_settings;
 CREATE POLICY "Users can insert own settings" ON user_settings
   FOR INSERT WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Users can update own settings" ON user_settings;
 CREATE POLICY "Users can update own settings" ON user_settings
   FOR UPDATE USING (true);
 
