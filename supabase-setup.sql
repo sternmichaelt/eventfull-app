@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS shared_timelines (
 -- Photos table (general photo repository)
 CREATE TABLE IF NOT EXISTS photos (
   id BIGSERIAL PRIMARY KEY,
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL, -- Changed from UUID to TEXT to support guest users
   url TEXT NOT NULL,
   name TEXT NOT NULL,
   category TEXT DEFAULT 'untagged',

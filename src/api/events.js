@@ -273,11 +273,11 @@ export async function updateUserSettings(settings) {
 // Photos API
 export async function fetchPhotos(category = null) {
   checkSupabase();
-  // eslint-disable-next-line no-unused-vars
   const userId = getUserId();
   let query = supabase
     .from('photos')
     .select('*')
+    .eq('user_id', userId) // Filter by current user
     .order('created_at', { ascending: false });
   
   if (category) {
@@ -300,26 +300,45 @@ export async function fetchPhotos(category = null) {
 export async function createPhoto(photo) {
   checkSupabase();
   const userId = getUserId();
-  const { data, error } = await supabase
-    .from('photos')
-    .insert({
-      user_id: userId,
-      url: photo.url,
-      name: photo.name,
-      category: photo.category || 'untagged'
-    })
-    .select()
-    .single();
   
-  if (error) {
-    console.error('Error creating photo:', error);
-    throw error;
+  // Validate required fields
+  if (!photo.url || !photo.name) {
+    throw new Error('Photo URL and name are required');
   }
   
-  return {
-    ...data,
-    id: data.id.toString()
-  };
+  try {
+    const { data, error } = await supabase
+      .from('photos')
+      .insert({
+        user_id: userId,
+        url: photo.url,
+        name: photo.name,
+        category: photo.category || 'untagged'
+      })
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('Error creating photo:', error);
+      console.error('Photo data:', { userId, name: photo.name, category: photo.category });
+      throw error;
+    }
+    
+    return {
+      ...data,
+      id: data.id.toString()
+    };
+  } catch (err) {
+    console.error('createPhoto error details:', {
+      message: err.message,
+      code: err.code,
+      details: err.details,
+      hint: err.hint,
+      userId,
+      photoName: photo.name
+    });
+    throw err;
+  }
 }
 
 export async function updatePhoto(photoId, updates) {

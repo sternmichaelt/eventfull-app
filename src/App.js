@@ -1074,25 +1074,49 @@ function ManagePhotosModal({ allCategories, onClose, onPhotosUpdated }) {
 
   const handleFiles = async (files) => {
     const arr = Array.from(files || []);
+    if (arr.length === 0) return;
+    
     setUploading(true);
     try {
-      const readers = arr.map((file) => new Promise((resolve) => {
+      const readers = arr.map((file) => new Promise((resolve, reject) => {
         const r = new FileReader();
         r.onload = () => resolve({ url: r.result, name: file.name });
+        r.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
         r.readAsDataURL(file);
       }));
       const items = await Promise.all(readers);
       
-      // Save each photo to Supabase
-      const savedPhotos = await Promise.all(
-        items.map(item => createPhoto({ ...item, category: 'untagged' }))
-      );
+      // Save each photo to Supabase with error handling per photo
+      const savePromises = items.map(async (item, index) => {
+        try {
+          const saved = await createPhoto({ ...item, category: 'untagged' });
+          return { success: true, photo: saved };
+        } catch (err) {
+          console.error(`Failed to save photo ${item.name}:`, err);
+          return { success: false, error: err.message, name: item.name };
+        }
+      });
       
-      setPhotos(prev => [...savedPhotos, ...prev]);
-      if (onPhotosUpdated) onPhotosUpdated();
+      const results = await Promise.all(savePromises);
+      const successful = results.filter(r => r.success).map(r => r.photo);
+      const failed = results.filter(r => !r.success);
+      
+      if (successful.length > 0) {
+        setPhotos(prev => [...successful, ...prev]);
+        if (onPhotosUpdated) onPhotosUpdated();
+      }
+      
+      if (failed.length > 0) {
+        const failedNames = failed.map(f => f.name).join(', ');
+        alert(`Failed to upload ${failed.length} photo(s): ${failedNames}`);
+      }
+      
+      if (successful.length === 0 && failed.length > 0) {
+        alert('Failed to upload all photos. Please check the console for details.');
+      }
     } catch (err) {
       console.error('Error uploading photos:', err);
-      alert('Failed to upload some photos. Please try again.');
+      alert(`Failed to upload photos: ${err.message}`);
     } finally {
       setUploading(false);
     }
