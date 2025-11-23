@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, ZoomIn, ZoomOut, Calendar, Heart, GraduationCap, Briefcase, Baby, Star, X, Camera, ChevronLeft, ChevronRight, Images, BookOpen, Settings, ChevronDown } from 'lucide-react';
+import { Plus, ZoomIn, ZoomOut, Calendar, Heart, GraduationCap, Briefcase, Baby, Star, X, Camera, ChevronLeft, ChevronRight, Images, BookOpen, Settings, ChevronDown, LogOut } from 'lucide-react';
 import { fetchEvents, createEvent, updateEvent, deleteEvent, fetchTimelines, createTimeline, updateTimeline, deleteTimeline, shareTimeline, fetchSharedTimelines, fetchUserSettings, updateUserSettings, fetchPhotos, createPhoto, updatePhoto, deletePhoto, tagPhotoToEvent, untagPhotoFromEvent, getPhotosForEvent } from './api/events';
 import { testConnection } from './utils/testSupabaseConnection';
+import { useAuth } from './contexts/AuthContext';
+import AuthModal from './components/AuthModal';
 // Optional AI import (safe to remove)
 // import { classifyPhotos } from './ai/PhotoClassifier';
 
@@ -1440,6 +1442,8 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
   const [taggedPhotos, setTaggedPhotos] = useState([]);
   const [availablePhotos, setAvailablePhotos] = useState([]);
   const [showPhotoSelector, setShowPhotoSelector] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
   const fileInputRef = useRef(null);
   const galleryInputRef = useRef(null);
 
@@ -1669,51 +1673,62 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setSaveError(null);
+    
     if (formData.title && formData.date) {
-      const normalized = {
-        ...(isEdit ? { id: initialEvent.id } : {}), // Only include ID if editing
-        ...formData,
-        date: new Date(formData.date),
-        importance: parseInt(formData.importance),
-        images: [], // Keep for backward compatibility but use tagging
-        journals: formData.journals || [],
-        recordings: recordings || []
-      };
-      
-      // Save event first (this will create/update the event and return the ID)
-      const savedEvent = await onSave(normalized);
-      const eventId = savedEvent?.id || (isEdit ? initialEvent.id : null);
-      
-      // Then tag photos to the event
-      if (eventId) {
-        try {
-          // Get current tagged photos for this event
-          const currentTagged = isEdit ? await getPhotosForEvent(eventId) : [];
-          const currentTaggedIds = new Set(currentTagged.map(p => p.id));
-          const newTaggedIds = new Set(taggedPhotos.map(p => p.id));
-          
-          // Tag new photos
-          for (const photo of taggedPhotos) {
-            if (!currentTaggedIds.has(photo.id)) {
-              await tagPhotoToEvent(photo.id, eventId);
-              // Update photo category to match event category
-              await updatePhoto(photo.id, { category: formData.category });
+      setIsSaving(true);
+      try {
+        const normalized = {
+          ...(isEdit ? { id: initialEvent.id } : {}), // Only include ID if editing
+          ...formData,
+          date: new Date(formData.date),
+          importance: parseInt(formData.importance),
+          images: [], // Keep for backward compatibility but use tagging
+          journals: formData.journals || [],
+          recordings: recordings || []
+        };
+        
+        // Save event first (this will create/update the event and return the ID)
+        const savedEvent = await onSave(normalized);
+        const eventId = savedEvent?.id || (isEdit ? initialEvent.id : null);
+        
+        // Then tag photos to the event
+        if (eventId) {
+          try {
+            // Get current tagged photos for this event
+            const currentTagged = isEdit ? await getPhotosForEvent(eventId) : [];
+            const currentTaggedIds = new Set(currentTagged.map(p => p.id));
+            const newTaggedIds = new Set(taggedPhotos.map(p => p.id));
+            
+            // Tag new photos
+            for (const photo of taggedPhotos) {
+              if (!currentTaggedIds.has(photo.id)) {
+                await tagPhotoToEvent(photo.id, eventId);
+                // Update photo category to match event category
+                await updatePhoto(photo.id, { category: formData.category });
+              }
             }
-          }
-          
-          // Untag removed photos
-          for (const photo of currentTagged) {
-            if (!newTaggedIds.has(photo.id)) {
-              await untagPhotoFromEvent(photo.id, eventId);
+            
+            // Untag removed photos
+            for (const photo of currentTagged) {
+              if (!newTaggedIds.has(photo.id)) {
+                await untagPhotoFromEvent(photo.id, eventId);
+              }
             }
+          } catch (err) {
+            console.error('Error tagging photos:', err);
+            // Don't block the save, just log the error
           }
-        } catch (err) {
-          console.error('Error tagging photos:', err);
-          // Don't block the save, just log the error
         }
+        
+        onClose();
+      } catch (err) {
+        console.error('Error saving event:', err);
+        const errorMessage = err?.userMessage || err?.message || err?.details || err?.hint || 'Failed to save event. Please try again.';
+        setSaveError(errorMessage);
+      } finally {
+        setIsSaving(false);
       }
-      
-      onClose();
     }
   };
 
@@ -2084,6 +2099,13 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
               </div>
             </div>
 
+            {/* Error Message */}
+            {saveError && (
+              <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-red-800 text-sm font-medium">Error: {saveError}</p>
+              </div>
+            )}
+
             {/* Action Buttons */}
             <div className="flex justify-end gap-3 pt-6 border-t">
               {isEdit && (
@@ -2099,14 +2121,16 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
                 type="button"
                 onClick={onClose}
                 className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                disabled={isSaving}
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                disabled={isSaving}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isEdit ? 'Update Event' : 'Create Event'}
+                {isSaving ? 'Saving...' : (isEdit ? 'Update Event' : 'Create Event')}
               </button>
             </div>
           </form>
@@ -2367,6 +2391,8 @@ function TimelineModal({ timelines, currentTimelineId, onClose, onSelectTimeline
 }
 
 function EventFull() {
+  const { user, loading: authLoading, signOut } = useAuth();
+  const [showAuthModal, setShowAuthModal] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -2690,6 +2716,18 @@ function EventFull() {
     }
   };
 
+  // Show loading state for auth
+  if (authLoading) {
+    return (
+      <div className="w-full h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   // Show loading state
   if (loading) {
     return (
@@ -3001,7 +3039,7 @@ function EventFull() {
       const savedEvent = await updateEvent(updatedEvent.id, {
         title: updatedEvent.title,
         description: updatedEvent.description,
-        date: updatedEvent.date,
+        date: updatedEvent.date instanceof Date ? updatedEvent.date : new Date(updatedEvent.date),
         category: updatedEvent.category,
         importance: updatedEvent.importance,
         image_url: updatedEvent.image,
@@ -3013,8 +3051,7 @@ function EventFull() {
       return savedEvent; // Return event so EventForm can get the ID
     } catch (err) {
       console.error('Error updating event:', err);
-      alert('Failed to update event. Please try again.');
-      throw err;
+      throw err; // Let EventForm handle the error display
     }
   };
 
@@ -3128,6 +3165,25 @@ function EventFull() {
             >
               <Settings className="w-4 h-4" />
             </button>
+            
+            {user ? (
+              <button 
+                onClick={signOut}
+                className="border border-gray-300 text-gray-700 px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50 transition-colors"
+                title="Sign Out"
+              >
+                <LogOut className="w-4 h-4" />
+                Sign Out
+              </button>
+            ) : (
+              <button 
+                onClick={() => setShowAuthModal(true)}
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+                title="Sign In"
+              >
+                Sign In
+              </button>
+            )}
             
             <button 
               onClick={() => setShowAddForm(true)}
@@ -3542,6 +3598,11 @@ function EventFull() {
           onShareTimeline={handleShareTimeline}
           sharedUsers={sharedUsers}
         />
+      )}
+
+      {/* Auth Modal */}
+      {showAuthModal && (
+        <AuthModal onClose={() => setShowAuthModal(false)} />
       )}
     </div>
   );

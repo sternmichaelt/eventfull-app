@@ -7,8 +7,22 @@ const checkSupabase = () => {
   }
 };
 
-// Get current user ID (for now using localStorage, will be replaced with auth later)
-const getUserId = () => {
+// Get current user ID - uses authenticated user if available, otherwise falls back to guest user
+const getUserId = async () => {
+  checkSupabase();
+  
+  // First, check if user is authenticated
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user?.id) {
+      // User is authenticated - return their UUID as a string
+      return session.user.id;
+    }
+  } catch (err) {
+    console.error('Error getting auth session:', err);
+  }
+  
+  // Fall back to guest user if not authenticated
   let userId = localStorage.getItem('eventfull:userId');
   if (!userId) {
     userId = `guest-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
@@ -20,12 +34,12 @@ const getUserId = () => {
 // Events API
 export async function fetchEvents(timelineId) {
   checkSupabase();
-  // eslint-disable-next-line no-unused-vars
-  const userId = getUserId(); // Stored for future use with proper auth
+  const userId = await getUserId();
   const { data, error } = await supabase
     .from('events')
     .select('*')
     .eq('timeline_id', timelineId)
+    .eq('user_id', userId) // Filter by user
     .order('date', { ascending: true });
   
   if (error) {
@@ -45,7 +59,10 @@ export async function fetchEvents(timelineId) {
 
 export async function createEvent(event) {
   checkSupabase();
-  const userId = getUserId();
+  const userId = await getUserId();
+  
+  console.log('Creating event with userId:', userId, 'type:', typeof userId);
+  
   const { data, error } = await supabase
     .from('events')
     .insert({
@@ -65,7 +82,22 @@ export async function createEvent(event) {
     .single();
   
   if (error) {
-    console.error('Error creating event:', error);
+    console.error('Error creating event:', {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+      userId: userId,
+      userIdType: typeof userId
+    });
+    
+    // Provide helpful error message for common issues
+    if (error.code === '23503' || error.message?.includes('foreign key') || error.message?.includes('user_id')) {
+      error.userMessage = 'Database schema error: Please run the migration script (supabase-migrate-to-text-userid.sql) in Supabase SQL Editor';
+    } else if (error.code === '42704' || error.message?.includes('column') || error.message?.includes('does not exist')) {
+      error.userMessage = 'Database table/column error: Please run the setup script (supabase-setup.sql) in Supabase SQL Editor';
+    }
+    
     throw error;
   }
   
@@ -123,10 +155,11 @@ export async function deleteEvent(eventId) {
 // Timelines API
 export async function fetchTimelines() {
   checkSupabase();
-  const userId = getUserId();
+  const userId = await getUserId();
   const { data, error } = await supabase
     .from('timelines')
     .select('*')
+    .eq('user_id', userId) // Filter by user
     .order('created_at', { ascending: true });
   
   if (error) {
@@ -139,7 +172,7 @@ export async function fetchTimelines() {
 
 export async function createTimeline(timeline) {
   checkSupabase();
-  const userId = getUserId();
+  const userId = await getUserId();
   const { data, error } = await supabase
     .from('timelines')
     .insert({
@@ -195,12 +228,12 @@ export async function deleteTimeline(timelineId) {
 // Shared timelines API
 export async function fetchSharedTimelines() {
   checkSupabase();
-  // eslint-disable-next-line no-unused-vars
-  const userId = getUserId(); // Stored for future use with proper auth
-  // This will need to be updated when we have proper auth
+  const userId = await getUserId();
+  // Fetch timelines shared with current user OR owned by current user
   const { data, error } = await supabase
     .from('shared_timelines')
-    .select('*');
+    .select('*')
+    .or(`owner_user_id.eq.${userId},shared_with_email.eq.${userId}`);
   
   if (error) {
     console.error('Error fetching shared timelines:', error);
@@ -212,7 +245,7 @@ export async function fetchSharedTimelines() {
 
 export async function shareTimeline(timelineId, email) {
   checkSupabase();
-  const userId = getUserId();
+  const userId = await getUserId();
   const { data, error } = await supabase
     .from('shared_timelines')
     .insert({
@@ -234,7 +267,7 @@ export async function shareTimeline(timelineId, email) {
 // User settings API
 export async function fetchUserSettings() {
   checkSupabase();
-  const userId = getUserId();
+  const userId = await getUserId();
   const { data, error } = await supabase
     .from('user_settings')
     .select('*')
@@ -251,7 +284,7 @@ export async function fetchUserSettings() {
 
 export async function updateUserSettings(settings) {
   checkSupabase();
-  const userId = getUserId();
+  const userId = await getUserId();
   const { data, error } = await supabase
     .from('user_settings')
     .upsert({
@@ -273,7 +306,7 @@ export async function updateUserSettings(settings) {
 // Photos API
 export async function fetchPhotos(category = null) {
   checkSupabase();
-  const userId = getUserId();
+  const userId = await getUserId();
   let query = supabase
     .from('photos')
     .select('*')
@@ -299,7 +332,7 @@ export async function fetchPhotos(category = null) {
 
 export async function createPhoto(photo) {
   checkSupabase();
-  const userId = getUserId();
+  const userId = await getUserId();
   
   // Validate required fields
   if (!photo.url || !photo.name) {
