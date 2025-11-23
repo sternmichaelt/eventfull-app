@@ -33,7 +33,7 @@ export async function debugSupabase() {
   // Test connection
   console.log('\n3. Testing Connection:');
   try {
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('timelines')
       .select('count')
       .limit(1);
