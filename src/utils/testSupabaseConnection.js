@@ -16,7 +16,7 @@ export async function testConnection() {
     }
 
     // Test basic connection with timelines table
-    const { data: timelines, error: timelineError } = await supabase
+    const { error: timelineError } = await supabase
       .from('timelines')
       .select('count')
       .limit(1);

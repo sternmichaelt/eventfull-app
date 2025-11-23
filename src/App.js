@@ -809,7 +809,7 @@ function EventGallery({ event, startIndex = 0, onClose }) {
       }
     };
     loadPhotos();
-  }, [event?.id]);
+  }, [event?.id, event?.image, event?.title, event?.category]);
   
   if (!event) return null;
   
