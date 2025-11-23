@@ -4,6 +4,7 @@ import './index.css';
 import App from './App';
 import { AuthProvider } from './contexts/AuthContext';
 import reportWebVitals from './reportWebVitals';
+import './utils/debugSupabase';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(

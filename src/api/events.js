@@ -7,28 +7,24 @@ const checkSupabase = () => {
   }
 };
 
-// Get current user ID - uses authenticated user if available, otherwise falls back to guest user
+// Get current user ID - requires authenticated user (UUID only)
 const getUserId = async () => {
   checkSupabase();
   
-  // First, check if user is authenticated
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user?.id) {
-      // User is authenticated - return their UUID as a string
-      return session.user.id;
-    }
-  } catch (err) {
-    console.error('Error getting auth session:', err);
+  // Get authenticated user session
+  const { data: { session }, error } = await supabase.auth.getSession();
+  
+  if (error) {
+    console.error('Error getting auth session:', error);
+    throw new Error('Authentication error. Please sign in.');
   }
   
-  // Fall back to guest user if not authenticated
-  let userId = localStorage.getItem('eventfull:userId');
-  if (!userId) {
-    userId = `guest-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-    localStorage.setItem('eventfull:userId', userId);
+  if (!session?.user?.id) {
+    throw new Error('You must be signed in to use this feature. Please sign in or create an account.');
   }
-  return userId;
+  
+  // Return authenticated user's UUID
+  return session.user.id;
 };
 
 // Events API
@@ -93,9 +89,11 @@ export async function createEvent(event) {
     
     // Provide helpful error message for common issues
     if (error.code === '23503' || error.message?.includes('foreign key') || error.message?.includes('user_id')) {
-      error.userMessage = 'Database schema error: Please run the migration script (supabase-migrate-to-text-userid.sql) in Supabase SQL Editor';
+      error.userMessage = 'Database schema error: Please ensure user_id columns are UUID type and linked to auth.users';
     } else if (error.code === '42704' || error.message?.includes('column') || error.message?.includes('does not exist')) {
       error.userMessage = 'Database table/column error: Please run the setup script (supabase-setup.sql) in Supabase SQL Editor';
+    } else if (error.message?.includes('invalid input syntax for type uuid')) {
+      error.userMessage = 'Authentication required: Please sign in to use this feature';
     }
     
     throw error;

@@ -2438,8 +2438,20 @@ function EventFull() {
   const [showSettings, setShowSettings] = useState(false);
   const [backgroundUrl, setBackgroundUrl] = useState('');
 
-  // Load initial data from Supabase
+  // Load initial data from Supabase (only if authenticated)
   useEffect(() => {
+    if (!user && !authLoading) {
+      // User not authenticated - show auth modal
+      setShowAuthModal(true);
+      setLoading(false);
+      return;
+    }
+
+    if (!user) {
+      // Still loading auth state
+      return;
+    }
+
     const loadInitialData = async () => {
       try {
         setLoading(true);
@@ -2489,15 +2501,16 @@ function EventFull() {
       } catch (err) {
         console.error('Error loading initial data:', err);
         const errorMessage = err.message || 'Failed to load data';
-        if (errorMessage.includes('Supabase is not configured')) {
+        if (errorMessage.includes('must be signed in') || errorMessage.includes('Authentication error')) {
+          setError('Please sign in to access your timeline.');
+          setShowAuthModal(true);
+        } else if (errorMessage.includes('Supabase is not configured')) {
           setError('Database connection error. Please check your configuration.');
         } else if (errorMessage.includes('Missing Supabase')) {
           setError('Database configuration missing. Please contact support.');
         } else {
           setError('Failed to load data. Please refresh the page.');
         }
-        // Fallback to sample events if Supabase fails
-        setEvents(sampleEvents);
       } finally {
         setLoading(false);
       }
@@ -2505,35 +2518,32 @@ function EventFull() {
 
     loadInitialData();
     
-    // Test Supabase connection on mount (development only)
-    if (process.env.NODE_ENV === 'development') {
+    // Test Supabase connection on mount (both dev and production for debugging)
+    if (user) {
       testConnection().then(results => {
         if (!results.connected) {
           console.warn('⚠️ Supabase connection test failed:', results.errors);
+          console.warn('💡 Run window.debugSupabase() in console for detailed diagnostics');
         }
       });
     }
-  }, []);
+  }, [user, authLoading]);
 
-  // Load events when timeline changes
+  // Load events when timeline changes (only if authenticated)
   useEffect(() => {
+    if (!user) return;
+    
     const loadEvents = async () => {
       if (!currentTimelineId) return;
       
       try {
         const loadedEvents = await fetchEvents(currentTimelineId);
-        if (loadedEvents.length > 0) {
-          setEvents(loadedEvents);
-        } else {
-          // If no events and this is the default timeline, use sample events
-          if (currentTimelineId === 'default') {
-            setEvents(sampleEvents);
-          } else {
-            setEvents([]);
-          }
-        }
+        setEvents(loadedEvents);
       } catch (err) {
         console.error('Error loading events:', err);
+        if (err.message?.includes('must be signed in') || err.message?.includes('Authentication error')) {
+          setShowAuthModal(true);
+        }
         setEvents([]);
       }
     };
@@ -2541,7 +2551,7 @@ function EventFull() {
     if (!loading) {
       loadEvents();
     }
-  }, [currentTimelineId, loading]);
+  }, [currentTimelineId, loading, user]);
 
   // Save background to Supabase
   useEffect(() => {
@@ -2724,6 +2734,15 @@ function EventFull() {
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading...</p>
         </div>
+      </div>
+    );
+  }
+
+  // Show auth modal if not authenticated
+  if (!user) {
+    return (
+      <div className="w-full h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <AuthModal onClose={() => {}} />
       </div>
     );
   }
