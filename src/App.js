@@ -13,17 +13,17 @@ const DEFAULT_BACKGROUNDS = [
   {
     id: 'bg-mountains',
     name: 'Calm Mountains',
-    url: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?q=80&w=1600&auto=format&fit=crop'
+    url: '/backgrounds/calm-mountains.jpg'
   },
   {
     id: 'bg-sky',
     name: 'Soft Sky',
-    url: 'https://images.unsplash.com/photo-1496307042754-b4aa456c4a2d?q=80&w=1600&auto=format&fit=crop'
+    url: '/backgrounds/soft-sky.jpg'
   },
   {
     id: 'bg-abstract',
     name: 'Gentle Abstract',
-    url: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=1600&auto=format&fit=crop'
+    url: '/backgrounds/gentle-abstract.jpg'
   }
 ];
 
