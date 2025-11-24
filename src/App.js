@@ -2538,7 +2538,21 @@ function EventFull() {
       
       try {
         const loadedEvents = await fetchEvents(currentTimelineId);
-        setEvents(loadedEvents);
+        
+        // Load tagged photos for each event
+        const eventsWithPhotos = await Promise.all(
+          loadedEvents.map(async (event) => {
+            try {
+              const photos = await getPhotosForEvent(event.id);
+              return { ...event, taggedPhotos: photos };
+            } catch (err) {
+              console.error(`Error loading photos for event ${event.id}:`, err);
+              return { ...event, taggedPhotos: [] };
+            }
+          })
+        );
+        
+        setEvents(eventsWithPhotos);
       } catch (err) {
         console.error('Error loading events:', err);
         if (err.message?.includes('must be signed in') || err.message?.includes('Authentication error')) {
@@ -3295,7 +3309,8 @@ function EventFull() {
               // Smart positioning to prevent cards from going off-screen
               const getCardPosition = () => {
                 const baseCardWidth = 320; // Base card width in pixels
-                const baseCardHeight = event.image ? 320 : 240; // Base estimated card height
+                const hasPhotos = event.image || (event.taggedPhotos && event.taggedPhotos.length > 0);
+                const baseCardHeight = hasPhotos ? 320 : 240; // Base estimated card height
                 const cardWidth = baseCardWidth * zoom; // Scale card width with zoom
                 const cardHeight = baseCardHeight * zoom; // Scale card height with zoom
                 const timelineCenter = 50; // Timeline is at 50% of container height
@@ -3364,7 +3379,7 @@ function EventFull() {
                       transform: `scale(${Math.max(0.8, event.importance / 10)}) ${selectedEvent?.id === event.id ? 'scale(1.3)' : ''}`
                     }}
                   >
-                    {event.image ? <Camera style={{ width: `${3 * zoom}px`, height: `${3 * zoom}px` }} /> : getCategoryIcon(event.category, 3 * zoom)}
+                    {(event.image || (event.taggedPhotos && event.taggedPhotos.length > 0)) ? <Camera style={{ width: `${3 * zoom}px`, height: `${3 * zoom}px` }} /> : getCategoryIcon(event.category, 3 * zoom)}
                   </div>
                   
                   {/* Event Card */}
@@ -3382,21 +3397,36 @@ function EventFull() {
                         ? 'ring-2 ring-blue-400 shadow-xl transform scale-105' 
                         : 'group-hover:shadow-xl group-hover:transform group-hover:scale-102'
                     }`}>
-                      {/* Event Image */}
-                      {event.image && (
-                        <div 
-                          className="w-full bg-gray-100 overflow-hidden cursor-pointer" 
-                          title="View photos" 
-                          onClick={(e) => { e.stopPropagation(); setGalleryForEvent(event); setGalleryStartIndex(0); }}
-                          style={{ height: `${128 * zoom}px` }}
-                        >
-                          <img 
-                            src={event.image} 
-                            alt={event.title}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                      )}
+                      {/* Event Image - Show first tagged photo or event.image */}
+                      {(() => {
+                        const eventPhotos = event.taggedPhotos || [];
+                        const displayImage = eventPhotos.length > 0 ? eventPhotos[0].url : event.image;
+                        const photoCount = eventPhotos.length;
+                        
+                        if (displayImage) {
+                          return (
+                            <div 
+                              className="w-full bg-gray-100 overflow-hidden cursor-pointer relative" 
+                              title={photoCount > 0 ? `View ${photoCount} photo(s)` : "View photos"} 
+                              onClick={(e) => { e.stopPropagation(); setGalleryForEvent(event); setGalleryStartIndex(0); }}
+                              style={{ height: `${128 * zoom}px` }}
+                            >
+                              <img 
+                                src={displayImage} 
+                                alt={event.title}
+                                className="w-full h-full object-cover"
+                              />
+                              {photoCount > 1 && (
+                                <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded flex items-center gap-1">
+                                  <Camera style={{ width: '12px', height: '12px' }} />
+                                  <span>{photoCount}</span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                       
                       <div style={{ padding: `${16 * zoom}px` }}>
                         <div className="flex justify-between items-start mb-2">

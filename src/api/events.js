@@ -338,10 +338,11 @@ export async function createPhoto(photo) {
   }
   
   try {
+    // Ensure userId is UUID format (should already be from getUserId)
     const { data, error } = await supabase
       .from('photos')
       .insert({
-        user_id: userId,
+        user_id: userId, // This should be a UUID string from authenticated user
         url: photo.url,
         name: photo.name,
         category: photo.category || 'untagged'
@@ -351,7 +352,26 @@ export async function createPhoto(photo) {
     
     if (error) {
       console.error('Error creating photo:', error);
-      console.error('Photo data:', { userId, name: photo.name, category: photo.category });
+      console.error('Photo data:', { 
+        userId, 
+        userIdType: typeof userId,
+        name: photo.name, 
+        category: photo.category,
+        errorCode: error.code,
+        errorMessage: error.message,
+        errorDetails: error.details,
+        errorHint: error.hint
+      });
+      
+      // Provide helpful error message
+      if (error.code === '23502' || error.message?.includes('null value')) {
+        error.userMessage = 'User ID is missing. Please sign in to upload photos.';
+      } else if (error.code === '23503' || error.message?.includes('foreign key')) {
+        error.userMessage = 'Database schema error: Please run fix-photos-uuid.sql in Supabase SQL Editor';
+      } else if (error.message?.includes('invalid input syntax for type uuid')) {
+        error.userMessage = 'User ID format error: Please sign in again.';
+      }
+      
       throw error;
     }
     
@@ -366,6 +386,7 @@ export async function createPhoto(photo) {
       details: err.details,
       hint: err.hint,
       userId,
+      userIdType: typeof userId,
       photoName: photo.name
     });
     throw err;
