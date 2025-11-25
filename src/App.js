@@ -1089,9 +1089,14 @@ function ManagePhotosModal({ allCategories, onClose, onPhotosUpdated }) {
       const items = await Promise.all(readers);
       
       // Save each photo to Supabase with error handling per photo
+      // All photos uploaded from Manage Photos are tagged as 'untagged'
+      // so they appear in the Event Photos selector
       const savePromises = items.map(async (item, index) => {
         try {
-          const saved = await createPhoto({ ...item, category: 'untagged' });
+          const saved = await createPhoto({ 
+            ...item, 
+            category: 'untagged' // Always 'untagged' so photos appear in Event Photos selector
+          });
           return { success: true, photo: saved };
         } catch (err) {
           console.error(`Failed to save photo ${item.name}:`, err);
@@ -1463,9 +1468,12 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
   }, [isEdit, initialEvent?.id]);
 
   // Load available photos for selection
+  // fetchPhotos() with no category returns ALL photos (including untagged)
+  // This ensures all photos uploaded from Manage Photos are available for selection
   useEffect(() => {
     const loadAvailablePhotos = async () => {
       try {
+        // Fetch all photos (no category filter) - includes untagged photos
         const photos = await fetchPhotos();
         setAvailablePhotos(photos);
       } catch (err) {

@@ -311,6 +311,9 @@ export async function fetchPhotos(category = null) {
     .eq('user_id', userId) // Filter by current user
     .order('created_at', { ascending: false });
   
+  // If category is specified, filter by it
+  // If category is null/undefined, return ALL photos (including 'untagged')
+  // This ensures photos uploaded from Manage Photos are available in Event Photos selector
   if (category) {
     query = query.eq('category', category);
   }
