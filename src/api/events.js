@@ -305,6 +305,9 @@ export async function updateUserSettings(settings) {
 export async function fetchPhotos(category = null) {
   checkSupabase();
   const userId = await getUserId();
+  
+  console.log('fetchPhotos called:', { userId, userIdType: typeof userId, category });
+  
   let query = supabase
     .from('photos')
     .select('*')
@@ -321,11 +324,21 @@ export async function fetchPhotos(category = null) {
   const { data, error } = await query;
   
   if (error) {
-    console.error('Error fetching photos:', error);
+    console.error('Error fetching photos:', {
+      error,
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+      userId,
+      userIdType: typeof userId
+    });
     return [];
   }
   
-  return data.map(p => ({
+  console.log('fetchPhotos result:', { count: data?.length || 0, photos: data });
+  
+  return (data || []).map(p => ({
     ...p,
     id: p.id.toString()
   }));
@@ -334,6 +347,13 @@ export async function fetchPhotos(category = null) {
 export async function createPhoto(photo) {
   checkSupabase();
   const userId = await getUserId();
+  
+  console.log('createPhoto called:', { 
+    userId, 
+    userIdType: typeof userId,
+    photoName: photo.name,
+    category: photo.category 
+  });
   
   // Validate required fields
   if (!photo.url || !photo.name) {
@@ -358,6 +378,7 @@ export async function createPhoto(photo) {
       console.error('Photo data:', { 
         userId, 
         userIdType: typeof userId,
+        userIdValue: userId,
         name: photo.name, 
         category: photo.category,
         errorCode: error.code,
@@ -372,11 +393,15 @@ export async function createPhoto(photo) {
       } else if (error.code === '23503' || error.message?.includes('foreign key')) {
         error.userMessage = 'Database schema error: Please run fix-photos-uuid.sql in Supabase SQL Editor';
       } else if (error.message?.includes('invalid input syntax for type uuid')) {
-        error.userMessage = 'User ID format error: Please sign in again.';
+        error.userMessage = 'Database schema mismatch: Photos table expects UUID but received different type. Please run fix-photos-uuid.sql';
+      } else if (error.message?.includes('invalid input syntax for type text')) {
+        error.userMessage = 'Database schema mismatch: Photos table expects TEXT but received UUID. Please check database schema.';
       }
       
       throw error;
     }
+    
+    console.log('Photo created successfully:', { id: data.id, name: data.name });
     
     return {
       ...data,
