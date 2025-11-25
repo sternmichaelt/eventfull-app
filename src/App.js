@@ -1063,10 +1063,18 @@ function ManagePhotosModal({ allCategories, onClose, onPhotosUpdated }) {
     const loadPhotos = async () => {
       try {
         setLoading(true);
+        console.log('ManagePhotosModal: Loading photos...');
         const allPhotos = await fetchPhotos();
+        console.log('ManagePhotosModal: Loaded photos:', allPhotos.length);
         setPhotos(allPhotos);
       } catch (err) {
         console.error('Error loading photos:', err);
+        console.error('Error details:', {
+          message: err.message,
+          stack: err.stack
+        });
+        // Show user-friendly error
+        alert(`Failed to load photos: ${err.message || 'Please check console for details'}`);
       } finally {
         setLoading(false);
       }
