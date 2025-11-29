@@ -60,6 +60,9 @@ export async function createEvent(event) {
   
   console.log('Creating event with userId:', userId, 'type:', typeof userId);
   
+  // Map image property to image_url for database
+  const imageUrl = event.image || event.image_url || null;
+  
   const { data, error } = await supabase
     .from('events')
     .insert({
@@ -70,7 +73,7 @@ export async function createEvent(event) {
       date: event.date.toISOString(),
       category: event.category,
       importance: event.importance || 5,
-      image_url: event.image || null,
+      image_url: imageUrl, // Store primary image in image_url column
       images: event.images || [],
       journals: event.journals || [],
       recordings: event.recordings || []
@@ -113,11 +116,19 @@ export async function createEvent(event) {
 
 export async function updateEvent(eventId, updates) {
   checkSupabase();
+  
+  // Map image property to image_url for database
+  const dbUpdates = { ...updates };
+  if (dbUpdates.image !== undefined) {
+    dbUpdates.image_url = dbUpdates.image;
+    delete dbUpdates.image; // Remove image property, use image_url instead
+  }
+  
   const { data, error } = await supabase
     .from('events')
     .update({
-      ...updates,
-      date: updates.date ? updates.date.toISOString() : undefined,
+      ...dbUpdates,
+      date: dbUpdates.date ? dbUpdates.date.toISOString() : undefined,
       updated_at: new Date().toISOString()
     })
     .eq('id', parseInt(eventId)) // Convert string ID to number for Supabase
