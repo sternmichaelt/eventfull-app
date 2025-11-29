@@ -1478,7 +1478,8 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
       }
     };
     loadTaggedPhotos();
-  }, [isEdit, initialEvent?.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEdit, initialEvent?.id]); // formData.image and initialEvent.image intentionally excluded to prevent infinite loops
 
   // Load available photos for selection
   // fetchPhotos() with no category returns ALL photos (including untagged)
