@@ -2572,6 +2572,13 @@ function EventFull() {
     }
   }, [user, authLoading]);
 
+  // Close auth modal automatically when user successfully logs in
+  useEffect(() => {
+    if (user && showAuthModal) {
+      setShowAuthModal(false);
+    }
+  }, [user, showAuthModal]);
+
   // Load events when timeline changes (only if authenticated)
   useEffect(() => {
     if (!user) return;
@@ -2810,7 +2817,7 @@ function EventFull() {
   if (!user) {
     return (
       <div className="w-full h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
-        <AuthModal onClose={() => {}} />
+        <AuthModal onClose={() => setShowAuthModal(false)} />
       </div>
     );
   }
@@ -3385,7 +3392,7 @@ function EventFull() {
                 
                 if (isAbove && (timelineCenter - cardHeight/2 - 10) < containerPadding) {
                   return { 
-                    position: 'bottom-8', 
+                    position: 'bottom-20', // bottom-20 = 5rem = 80px for better clearance from timeline dates
                     connectionClass: 'top-full h-12',
                     horizontalClass: horizontalAdjustment
                   };
@@ -3399,8 +3406,10 @@ function EventFull() {
                   };
                 }
                 
+                // For bottom cards, add extra space to avoid overlapping timeline dates
+                // Timeline dates are at center (50%) with labels below, so need more clearance
                 return {
-                  position: isAbove ? 'bottom-8' : 'top-8',
+                  position: isAbove ? 'bottom-20' : 'top-8', // bottom-20 = 5rem = 80px for better clearance
                   connectionClass: isAbove ? 'top-full h-12' : 'bottom-full h-12',
                   horizontalClass: horizontalAdjustment
                 };

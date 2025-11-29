@@ -28,7 +28,11 @@ function AuthModal({ onClose }) {
         if (isSignUp) {
           setMessage('Check your email to confirm your account!');
         } else {
-          onClose();
+          // Sign in successful - close modal
+          // The parent component will detect user state change and close modal
+          setTimeout(() => {
+            onClose();
+          }, 100); // Small delay to ensure auth state updates
         }
       }
     } catch (err) {
