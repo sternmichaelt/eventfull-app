@@ -1467,6 +1467,11 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
         try {
           const photos = await getPhotosForEvent(initialEvent.id);
           setTaggedPhotos(photos);
+          // If event has a primary image, ensure it's set in formData
+          if (initialEvent.image && !formData.image) {
+            setFormData(prev => ({ ...prev, image: initialEvent.image }));
+            setImagePreview(initialEvent.image);
+          }
         } catch (err) {
           console.error('Error loading tagged photos:', err);
         }
@@ -1856,19 +1861,41 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
                     
                     {taggedPhotos.length > 0 && (
                       <div className="grid grid-cols-2 gap-2">
-                        {taggedPhotos.map((photo) => (
-                          <div key={photo.id} className="relative group">
-                            <img src={photo.url} alt={photo.name} className="w-full h-20 object-cover rounded" />
-                            <button
-                              type="button"
-                              onClick={() => handleUntagPhoto(photo.id)}
-                              className="absolute top-1 right-1 hidden group-hover:block text-xs px-1.5 py-0.5 bg-red-500 text-white rounded"
-                            >
-                              ×
-                            </button>
-                            <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[10px] px-1 py-0.5 truncate">{photo.name}</div>
-                          </div>
-                        ))}
+                        {taggedPhotos.map((photo) => {
+                          const isPrimary = formData.image === photo.url;
+                          return (
+                            <div key={photo.id} className="relative group">
+                              <img src={photo.url} alt={photo.name} className={`w-full h-20 object-cover rounded ${isPrimary ? 'ring-2 ring-blue-500' : ''}`} />
+                              <div className="absolute inset-0 flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                {!isPrimary && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setFormData(prev => ({ ...prev, image: photo.url }));
+                                      setImagePreview(photo.url);
+                                    }}
+                                    className="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
+                                    title="Set as primary"
+                                  >
+                                    Set Primary
+                                  </button>
+                                )}
+                                {isPrimary && (
+                                  <span className="text-xs px-2 py-1 bg-blue-500 text-white rounded">Primary</span>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleUntagPhoto(photo.id)}
+                                  className="text-xs px-1.5 py-0.5 bg-red-500 text-white rounded hover:bg-red-600"
+                                  title="Remove photo"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                              <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[10px] px-1 py-0.5 truncate">{photo.name}</div>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -2555,15 +2582,26 @@ function EventFull() {
       try {
         const loadedEvents = await fetchEvents(currentTimelineId);
         
-        // Load tagged photos for each event
+        // Load tagged photos for each event and ensure primary image is set
         const eventsWithPhotos = await Promise.all(
           loadedEvents.map(async (event) => {
             try {
               const photos = await getPhotosForEvent(event.id);
-              return { ...event, taggedPhotos: photos };
+              // If event has image_url but no image property, use image_url
+              const primaryImage = event.image || event.image_url || null;
+              return { 
+                ...event, 
+                taggedPhotos: photos,
+                image: primaryImage // Ensure image property is set for display
+              };
             } catch (err) {
               console.error(`Error loading photos for event ${event.id}:`, err);
-              return { ...event, taggedPhotos: [] };
+              const primaryImage = event.image || event.image_url || null;
+              return { 
+                ...event, 
+                taggedPhotos: [],
+                image: primaryImage
+              };
             }
           })
         );
@@ -3413,10 +3451,11 @@ function EventFull() {
                         ? 'ring-2 ring-blue-400 shadow-xl transform scale-105' 
                         : 'group-hover:shadow-xl group-hover:transform group-hover:scale-102'
                     }`}>
-                      {/* Event Image - Show first tagged photo or event.image */}
+                      {/* Event Image - Show primary image (event.image) or first tagged photo */}
                       {(() => {
                         const eventPhotos = event.taggedPhotos || [];
-                        const displayImage = eventPhotos.length > 0 ? eventPhotos[0].url : event.image;
+                        // Prioritize event.image (primary) over tagged photos
+                        const displayImage = event.image || (eventPhotos.length > 0 ? eventPhotos[0].url : null);
                         const photoCount = eventPhotos.length;
                         
                         if (displayImage) {
@@ -3432,7 +3471,7 @@ function EventFull() {
                                 alt={event.title}
                                 className="w-full h-full object-cover"
                               />
-                              {photoCount > 1 && (
+                              {photoCount > 0 && (
                                 <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded flex items-center gap-1">
                                   <Camera style={{ width: '12px', height: '12px' }} />
                                   <span>{photoCount}</span>

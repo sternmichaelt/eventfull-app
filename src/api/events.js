@@ -47,6 +47,7 @@ export async function fetchEvents(timelineId) {
     ...e,
     id: e.id.toString(), // Convert numeric ID to string for consistency
     date: new Date(e.date),
+    image: e.image_url || e.image || null, // Map image_url to image for consistency
     images: e.images || [],
     journals: e.journals || [],
     recordings: e.recordings || []
