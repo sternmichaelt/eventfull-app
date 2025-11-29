@@ -104,6 +104,7 @@ export async function createEvent(event) {
     ...data,
     id: data.id.toString(), // Convert numeric ID to string for consistency
     date: new Date(data.date),
+    image: data.image_url || data.image || null, // Map image_url to image for consistency
     images: data.images || [],
     journals: data.journals || [],
     recordings: data.recordings || []
@@ -132,6 +133,7 @@ export async function updateEvent(eventId, updates) {
     ...data,
     id: data.id.toString(), // Convert numeric ID to string for consistency
     date: new Date(data.date),
+    image: data.image_url || data.image || null, // Map image_url to image for consistency
     images: data.images || [],
     journals: data.journals || [],
     recordings: data.recordings || []
