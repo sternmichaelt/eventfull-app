@@ -3393,7 +3393,7 @@ function EventFull() {
                 
                 if (isAbove && (timelineCenter - cardHeight/2 - 10) < containerPadding) {
                   return { 
-                    position: 'bottom-32', // bottom-32 = 8rem = 128px for better clearance from timeline dates
+                    position: 'bottom-48', // bottom-48 = 12rem = 192px to ensure timeline dates are fully visible
                     connectionClass: 'top-full h-12',
                     horizontalClass: horizontalAdjustment
                   };
@@ -3408,9 +3408,10 @@ function EventFull() {
                 }
                 
                 // For bottom cards, add extra space to avoid overlapping timeline dates
-                // Timeline dates are at center (50%) with labels below, so need more clearance
+                // Timeline dates are at center (50%) with labels below, so need significant clearance
+                // Year labels extend ~48px below timeline, so bottom-48 ensures full visibility
                 return {
-                  position: isAbove ? 'bottom-32' : 'top-8', // bottom-32 = 8rem = 128px for better clearance
+                  position: isAbove ? 'bottom-48' : 'top-8', // bottom-48 = 12rem = 192px to clear timeline dates
                   connectionClass: isAbove ? 'top-full h-12' : 'bottom-full h-12',
                   horizontalClass: horizontalAdjustment
                 };
