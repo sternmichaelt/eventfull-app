@@ -3319,8 +3319,8 @@ function EventFull() {
             style={{ 
               width: `${Math.max(1400, totalYears * 120 * zoom)}px`,
               height: '800px',
-              paddingTop: '200px',
-              paddingBottom: '300px',
+              paddingTop: '100px', // Reduced from 200px to limit upward scroll
+              paddingBottom: '150px', // Reduced from 300px to limit downward scroll
               paddingLeft: '200px',
               paddingRight: '200px'
             }}
@@ -3393,7 +3393,7 @@ function EventFull() {
                 
                 if (isAbove && (timelineCenter - cardHeight/2 - 10) < containerPadding) {
                   return { 
-                    position: 'bottom-20', // bottom-20 = 5rem = 80px for better clearance from timeline dates
+                    position: 'bottom-32', // bottom-32 = 8rem = 128px for better clearance from timeline dates
                     connectionClass: 'top-full h-12',
                     horizontalClass: horizontalAdjustment
                   };
@@ -3410,7 +3410,7 @@ function EventFull() {
                 // For bottom cards, add extra space to avoid overlapping timeline dates
                 // Timeline dates are at center (50%) with labels below, so need more clearance
                 return {
-                  position: isAbove ? 'bottom-20' : 'top-8', // bottom-20 = 5rem = 80px for better clearance
+                  position: isAbove ? 'bottom-32' : 'top-8', // bottom-32 = 8rem = 128px for better clearance
                   connectionClass: isAbove ? 'top-full h-12' : 'bottom-full h-12',
                   horizontalClass: horizontalAdjustment
                 };
