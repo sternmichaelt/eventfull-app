@@ -1700,10 +1700,19 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
     if (formData.title && formData.date) {
       setIsSaving(true);
       try {
+        // Parse date in local time to avoid timezone issues
+        // formData.date is in YYYY-MM-DD format, parse it as local date (not UTC)
+        const dateParts = formData.date.split('-');
+        const localDate = new Date(
+          parseInt(dateParts[0]), // year
+          parseInt(dateParts[1]) - 1, // month (0-indexed)
+          parseInt(dateParts[2]) // day
+        );
+        
         const normalized = {
           ...(isEdit ? { id: initialEvent.id } : {}), // Only include ID if editing
           ...formData,
-          date: new Date(formData.date),
+          date: localDate,
           importance: parseInt(formData.importance),
           images: [], // Keep for backward compatibility but use tagging
           journals: formData.journals || [],
