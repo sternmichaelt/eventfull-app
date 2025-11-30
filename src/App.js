@@ -3261,16 +3261,7 @@ function EventFull() {
               <Settings className="w-4 h-4" />
             </button>
             
-            {user ? (
-              <button 
-                onClick={signOut}
-                className="border border-gray-300 text-gray-700 px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50 transition-colors"
-                title="Sign Out"
-              >
-                <LogOut className="w-4 h-4" />
-                Sign Out
-              </button>
-            ) : (
+            {!user && (
               <button 
                 onClick={() => setShowAuthModal(true)}
                 className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
@@ -3716,6 +3707,24 @@ function EventFull() {
       )}
 
       {/* Auth Modal */}
+      {/* Bottom Navigation Bar */}
+      <div className="absolute bottom-0 left-0 right-0 bg-white/80 backdrop-blur-sm shadow-sm border-t border-gray-200 px-6 py-3 z-10">
+        <div className="flex justify-between items-center">
+          <div>
+            {user && (
+              <button 
+                onClick={signOut}
+                className="border border-gray-300 text-gray-700 px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50 transition-colors"
+                title="Sign Out"
+              >
+                <LogOut className="w-4 h-4" />
+                Sign Out
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
       {showAuthModal && (
         <AuthModal onClose={() => setShowAuthModal(false)} />
       )}
