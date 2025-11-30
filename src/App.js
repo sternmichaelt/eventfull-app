@@ -3401,17 +3401,17 @@ function EventFull() {
                 
                 if (!isAbove && (timelineCenter + cardHeight/2 + 10) > (100 - containerPadding)) {
                   return { 
-                    position: 'top-48', // Move bottom cards down further (top-48 = 12rem = 192px from timeline)
+                    position: 'top-32', // Middle ground: top-32 = 8rem = 128px (between original top-8 and previous top-48)
                     connectionClass: 'bottom-full h-12',
                     horizontalClass: horizontalAdjustment
                   };
                 }
                 
                 // For bottom cards (!isAbove), add extra space to avoid overlapping timeline dates
-                // Timeline dates are at center (50%) with labels below, so need significant clearance
-                // Year labels extend ~48px below timeline, so top-48 ensures full visibility
+                // Timeline dates are at center (50%) with labels below, so need clearance
+                // Using top-32 (128px) as middle ground - higher than top-48 but lower than original top-8
                 return {
-                  position: isAbove ? 'bottom-8' : 'top-48', // Keep cards above at bottom-8, move cards below to top-48
+                  position: isAbove ? 'bottom-8' : 'top-32', // Keep cards above at bottom-8, bottom cards at top-32
                   connectionClass: isAbove ? 'top-full h-12' : 'bottom-full h-12',
                   horizontalClass: horizontalAdjustment
                 };
