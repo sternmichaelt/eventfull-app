@@ -3393,7 +3393,7 @@ function EventFull() {
                 
                 if (isAbove && (timelineCenter - cardHeight/2 - 10) < containerPadding) {
                   return { 
-                    position: 'bottom-48', // bottom-48 = 12rem = 192px to ensure timeline dates are fully visible
+                    position: 'bottom-8', // Revert to original position for cards above timeline
                     connectionClass: 'top-full h-12',
                     horizontalClass: horizontalAdjustment
                   };
@@ -3401,17 +3401,17 @@ function EventFull() {
                 
                 if (!isAbove && (timelineCenter + cardHeight/2 + 10) > (100 - containerPadding)) {
                   return { 
-                    position: 'top-8', 
+                    position: 'top-48', // Move bottom cards down further (top-48 = 12rem = 192px from timeline)
                     connectionClass: 'bottom-full h-12',
                     horizontalClass: horizontalAdjustment
                   };
                 }
                 
-                // For bottom cards, add extra space to avoid overlapping timeline dates
+                // For bottom cards (!isAbove), add extra space to avoid overlapping timeline dates
                 // Timeline dates are at center (50%) with labels below, so need significant clearance
-                // Year labels extend ~48px below timeline, so bottom-48 ensures full visibility
+                // Year labels extend ~48px below timeline, so top-48 ensures full visibility
                 return {
-                  position: isAbove ? 'bottom-48' : 'top-8', // bottom-48 = 12rem = 192px to clear timeline dates
+                  position: isAbove ? 'bottom-8' : 'top-48', // Keep cards above at bottom-8, move cards below to top-48
                   connectionClass: isAbove ? 'top-full h-12' : 'bottom-full h-12',
                   horizontalClass: horizontalAdjustment
                 };
