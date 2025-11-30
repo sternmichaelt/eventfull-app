@@ -947,9 +947,9 @@ function AllPhotosModal({ selectedCategories, onClose, onToggleCategory, onSelec
                 type="button"
                 onClick={onSelectAll}
                 className="px-3 py-1 rounded-full border border-gray-300 bg-white text-sm text-gray-700 hover:bg-gray-50"
-                title="Select all categories"
+                title={Object.keys(allCategories).every(key => selectedCategories.has(key)) ? "Deselect all categories" : "Select all categories"}
               >
-                Select All
+                {Object.keys(allCategories).every(key => selectedCategories.has(key)) ? "Select None" : "Select All"}
               </button>
                 {Object.entries(allCategories).map(([key, config]) => {
                 const active = selectedCategories.has(key);
@@ -2787,7 +2787,13 @@ function EventFull() {
   };
 
   const selectAllCategories = () => {
-    setSelectedCategories(new Set(allCategoryKeys));
+    // Toggle: if all are selected, deselect all; otherwise select all
+    const allSelected = allCategoryKeys.every(key => selectedCategories.has(key));
+    if (allSelected) {
+      setSelectedCategories(new Set()); // Deselect all
+    } else {
+      setSelectedCategories(new Set(allCategoryKeys)); // Select all
+    }
   };
 
   const addEvent = async (newEvent) => {
@@ -3576,9 +3582,9 @@ function EventFull() {
             type="button"
             onClick={selectAllCategories}
             className="px-3 py-1 rounded-full border border-gray-300 bg-white text-sm text-gray-700 hover:bg-gray-50"
-            title="Select all categories"
+            title={allCategoryKeys.every(key => selectedCategories.has(key)) ? "Deselect all categories" : "Select all categories"}
           >
-            Select All
+            {allCategoryKeys.every(key => selectedCategories.has(key)) ? "Select None" : "Select All"}
           </button>
           <div className="ml-auto hidden" />
           {Object.entries(allCategories).map(([key, config]) => {
