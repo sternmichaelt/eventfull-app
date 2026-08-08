@@ -3374,56 +3374,25 @@ function EventFull() {
               const isAbove = index % 2 === 0;
               const age = getAgeAtEvent(event.date);
               
-              // Smart positioning to prevent cards from going off-screen
-              const getCardPosition = () => {
-                const baseCardWidth = 320; // Base card width in pixels
-                const hasPhotos = event.image || (event.taggedPhotos && event.taggedPhotos.length > 0);
-                const baseCardHeight = hasPhotos ? 320 : 240; // Base estimated card height
-                const cardWidth = baseCardWidth * zoom; // Scale card width with zoom
-                const cardHeight = baseCardHeight * zoom; // Scale card height with zoom
-                const timelineCenter = 50; // Timeline is at 50% of container height
-                const containerPadding = 15; // Padding from edges
-                
-                // Check horizontal positioning - prevent cards from going off left/right edges
-                const timelineWidth = Math.max(1400, totalYears * 120 * zoom);
-                const cardHalfWidth = cardWidth / 2;
-                
-                let horizontalAdjustment = '';
-                if (position - cardHalfWidth < 250) {
-                  horizontalAdjustment = 'left-0 transform-none translate-x-0';
-                } else if (position + cardHalfWidth > timelineWidth - 250) {
-                  horizontalAdjustment = 'right-0 transform-none translate-x-0';
-                } else {
-                  horizontalAdjustment = 'transform -translate-x-1/2';
-                }
-                
-                if (isAbove && (timelineCenter - cardHeight/2 - 10) < containerPadding) {
-                  return { 
-                    position: 'bottom-8', // Revert to original position for cards above timeline
-                    connectionClass: 'top-full h-12',
-                    horizontalClass: horizontalAdjustment
-                  };
-                }
-                
-                if (!isAbove && (timelineCenter + cardHeight/2 + 10) > (100 - containerPadding)) {
-                  return { 
-                    position: 'top-32', // Middle ground: top-32 = 8rem = 128px (between original top-8 and previous top-48)
-                    connectionClass: 'bottom-full h-12',
-                    horizontalClass: horizontalAdjustment
-                  };
-                }
-                
-                // For bottom cards (!isAbove), add extra space to avoid overlapping timeline dates
-                // Timeline dates are at center (50%) with labels below, so need clearance
-                // Using top-32 (128px) as middle ground - higher than top-48 but lower than original top-8
-                return {
-                  position: isAbove ? 'bottom-8' : 'top-32', // Keep cards above at bottom-8, bottom cards at top-32
-                  connectionClass: isAbove ? 'top-full h-12' : 'bottom-full h-12',
-                  horizontalClass: horizontalAdjustment
-                };
-              };
-              
-              const cardPosition = getCardPosition();
+              // Equal gap above/below timeline; scales with zoom so spacing stays consistent
+              const cardGap = 48 * zoom;
+              const cardWidth = 320 * zoom;
+              const timelineWidth = Math.max(1400, totalYears * 120 * zoom);
+              const cardHalfWidth = cardWidth / 2;
+
+              let horizontalClass = 'left-1/2 -translate-x-1/2';
+              if (position - cardHalfWidth < 250) {
+                horizontalClass = 'left-0';
+              } else if (position + cardHalfWidth > timelineWidth - 250) {
+                horizontalClass = 'right-0';
+              }
+
+              const cardOffsetStyle = isAbove
+                ? { bottom: `${cardGap}px` }
+                : { top: `${cardGap}px` };
+              const connectionStyle = isAbove
+                ? { bottom: '100%', height: `${cardGap}px` }
+                : { top: '100%', height: `${cardGap}px` };
               
               return (
                 <div
@@ -3438,7 +3407,8 @@ function EventFull() {
                 >
                   {/* Connection Line */}
                   <div 
-                    className={`absolute w-px bg-gray-300 transform -translate-x-1/2 ${cardPosition.connectionClass}`}
+                    className="absolute left-1/2 w-px bg-gray-300 -translate-x-1/2"
+                    style={connectionStyle}
                   />
                   
                   {/* Event Dot */}
@@ -3455,15 +3425,16 @@ function EventFull() {
                   
                   {/* Event Card */}
                   <div 
-                    className={`absolute ${cardPosition.horizontalClass} ${cardPosition.position} ${selectedEvent?.id === event.id ? 'z-50' : 'z-30'}`}
+                    className={`absolute ${horizontalClass} ${selectedEvent?.id === event.id ? 'z-50' : 'z-30'}`}
                     style={{
+                      ...cardOffsetStyle,
                       width: `${320 * zoom}px`,
-                      maxHeight: `${350 * zoom}px`,
+                      maxHeight: `${380 * zoom}px`,
                       overflowY: 'auto',
                       fontSize: `${zoom}em`
                     }}
                   >
-                    <div className={`bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden transition-all duration-200 ${
+                    <div className={`bg-white rounded-lg shadow-lg border-2 border-gray-300 overflow-hidden transition-all duration-200 ${
                       selectedEvent?.id === event.id 
                         ? 'ring-2 ring-blue-400 shadow-xl transform scale-105' 
                         : 'group-hover:shadow-xl group-hover:transform group-hover:scale-102'
@@ -3501,31 +3472,21 @@ function EventFull() {
                       })()}
                       
                       <div style={{ padding: `${16 * zoom}px` }}>
-                        <div className="flex justify-between items-start mb-2">
-                          <div 
-                            className={`inline-flex items-center gap-1 rounded-full text-white ${getCategoryColor(event.category)}`}
-                            style={{ 
-                              padding: `${4 * zoom}px ${8 * zoom}px`,
-                              fontSize: `${12 * zoom}px`
-                            }}
+                        <div className="flex justify-between items-start gap-2 mb-1">
+                          <h3 
+                            className="font-bold text-gray-900 min-w-0 flex-1"
+                            style={{ fontSize: `${16 * zoom}px` }}
                           >
-                            {getCategoryIcon(event.category, 12 * zoom)}
-                            <span>{allCategories[event.category]?.label || 'Event'}</span>
-                          </div>
+                            {event.title}
+                          </h3>
                           <span 
-                            className="text-gray-500 font-medium"
+                            className="text-gray-500 font-medium shrink-0 whitespace-nowrap"
                             style={{ fontSize: `${12 * zoom}px` }}
                           >
                             Age {age}
                           </span>
                         </div>
                         
-                        <h3 
-                          className="font-bold text-gray-900 mb-1"
-                          style={{ fontSize: `${16 * zoom}px` }}
-                        >
-                          {event.title}
-                        </h3>
                         <p 
                           className="text-gray-600 mb-2"
                           style={{ fontSize: `${14 * zoom}px` }}
@@ -3542,26 +3503,49 @@ function EventFull() {
                           </p>
                         )}
                         
-                        {/* Importance indicator */}
-                        <div className="flex items-center gap-1">
-                          <span 
-                            className="text-gray-500"
-                            style={{ fontSize: `${12 * zoom}px` }}
+                        {/* Importance + category tags (up to 4) */}
+                        <div className="flex justify-between items-end gap-2">
+                          <div className="flex items-center gap-1 shrink-0">
+                            <span 
+                              className="text-gray-500"
+                              style={{ fontSize: `${12 * zoom}px` }}
+                            >
+                              Importance:
+                            </span>
+                            <div className="flex gap-1">
+                              {Array.from({ length: 5 }, (_, i) => (
+                                <div 
+                                  key={i} 
+                                  className={`rounded-full ${
+                                    i < event.importance / 2 ? 'bg-yellow-400' : 'bg-gray-200'
+                                  }`}
+                                  style={{
+                                    width: `${8 * zoom}px`,
+                                    height: `${8 * zoom}px`
+                                  }}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                          <div 
+                            className="flex flex-wrap justify-end gap-1"
+                            style={{ maxWidth: `${180 * zoom}px` }}
                           >
-                            Importance:
-                          </span>
-                          <div className="flex gap-1">
-                            {Array.from({ length: 5 }, (_, i) => (
+                            {(Array.isArray(event.categories) && event.categories.length > 0
+                              ? event.categories
+                              : [event.category]
+                            ).filter(Boolean).slice(0, 4).map((cat) => (
                               <div 
-                                key={i} 
-                                className={`rounded-full ${
-                                  i < event.importance / 2 ? 'bg-yellow-400' : 'bg-gray-200'
-                                }`}
-                                style={{
-                                  width: `${8 * zoom}px`,
-                                  height: `${8 * zoom}px`
+                                key={cat}
+                                className={`inline-flex items-center gap-1 rounded-full text-white ${getCategoryColor(cat)}`}
+                                style={{ 
+                                  padding: `${4 * zoom}px ${8 * zoom}px`,
+                                  fontSize: `${12 * zoom}px`
                                 }}
-                              />
+                              >
+                                {getCategoryIcon(cat, 12 * zoom)}
+                                <span>{allCategories[cat]?.label || 'Event'}</span>
+                              </div>
                             ))}
                           </div>
                         </div>
