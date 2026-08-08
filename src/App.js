@@ -780,62 +780,44 @@ const categoryConfig = {
   untagged: { color: 'bg-gray-500', icon: Images, label: 'Untagged' }
 };
 
-function EventGallery({ event, startIndex = 0, onClose }) {
-  const [index, setIndex] = useState(startIndex);
-  const [taggedPhotos, setTaggedPhotos] = useState([]);
-  const [loading, setLoading] = useState(true);
-  
-  useEffect(() => {
-    const loadPhotos = async () => {
-      if (event?.id) {
-        try {
-          setLoading(true);
-          const photos = await getPhotosForEvent(event.id);
-          const byUrl = new Set(photos.map(p => p.url).filter(Boolean));
-          // Only prepend legacy main image if it isn't already in the library list
-          if (event.image && !byUrl.has(event.image)) {
-            setTaggedPhotos([
-              { id: 'main', url: event.image, name: event.title || 'Image', category: event.category },
-              ...photos
-            ]);
-          } else {
-            setTaggedPhotos(photos);
-          }
-        } catch (err) {
-          console.error('Error loading event photos:', err);
-        } finally {
-          setLoading(false);
-        }
-      } else {
-        setLoading(false);
-      }
-    };
-    loadPhotos();
-  }, [event?.id, event?.image, event?.title, event?.category]);
-  
-  if (!event) return null;
-  
-  const gallery = taggedPhotos;
-  const goPrev = () => setIndex((i) => (i - 1 + gallery.length) % gallery.length);
-  const goNext = () => setIndex((i) => (i + 1) % gallery.length);
+function ImmersivePhotoViewer({
+  photos,
+  index,
+  onIndexChange,
+  onClose,
+  title,
+  primaryPhotoId = null
+}) {
+  const gallery = photos || [];
+  const safeIndex = gallery.length === 0 ? 0 : Math.min(Math.max(0, index), gallery.length - 1);
+  const current = gallery[safeIndex];
 
-  if (loading) {
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-lg shadow-xl p-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-          <div className="text-sm text-gray-600">Loading photos...</div>
-        </div>
-      </div>
-    );
-  }
+  const goPrev = () => {
+    if (gallery.length === 0) return;
+    onIndexChange((safeIndex - 1 + gallery.length) % gallery.length);
+  };
+  const goNext = () => {
+    if (gallery.length === 0) return;
+    onIndexChange((safeIndex + 1) % gallery.length);
+  };
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose();
+      if (e.key === 'ArrowLeft') goPrev();
+      if (e.key === 'ArrowRight') goNext();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [safeIndex, gallery.length]);
 
   if (gallery.length === 0) {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-lg shadow-xl p-8 text-center">
-          <p className="text-gray-600 mb-4">No photos for this event</p>
-          <button onClick={onClose} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+      <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" style={{ background: 'rgba(71, 85, 105, 0.72)' }}>
+        <div className="bg-white/95 rounded-xl shadow-xl px-8 py-6 text-center">
+          <p className="text-slate-600 mb-4">No photos to show</p>
+          <button type="button" onClick={onClose} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
             Close
           </button>
         </div>
@@ -844,396 +826,448 @@ function EventGallery({ event, startIndex = 0, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl overflow-hidden">
-        <div className="flex items-center justify-between p-4 border-b">
-          <h3 className="text-lg font-semibold text-gray-900">{event.title} — Photos ({gallery.length})</h3>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
-            <X className="w-5 h-5" />
-          </button>
+    <div
+      className="fixed inset-0 z-[70] flex flex-col"
+      style={{ background: 'linear-gradient(160deg, rgba(100,116,139,0.88), rgba(71,85,105,0.92))' }}
+      onClick={onClose}
+    >
+      <div
+        className="flex items-center justify-between px-4 sm:px-6 py-3 text-white"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="min-w-0">
+          <h3 className="text-base sm:text-lg font-semibold truncate drop-shadow">{title || 'Photos'}</h3>
+          <p className="text-sm text-white/80">
+            {safeIndex + 1} of {gallery.length}
+            {current?.name ? ` · ${current.name}` : ''}
+          </p>
         </div>
-        <div className="p-4 flex items-center gap-4">
-          <button onClick={goPrev} className="p-2 rounded hover:bg-gray-100"><ChevronLeft className="w-5 h-5" /></button>
-          <div className="flex-1">
-            <div className="w-full h-[420px] bg-gray-100 rounded flex items-center justify-center overflow-hidden">
-              {gallery[index]?.url && (
-                <img src={gallery[index].url} alt={gallery[index].name || 'Photo'} className="max-h-full max-w-full object-contain" />
-              )}
-            </div>
-            <div className="mt-2 text-center text-sm text-gray-600">
-              {gallery[index]?.name || 'Photo'} ({index + 1} of {gallery.length})
-            </div>
-          </div>
-          <button onClick={goNext} className="p-2 rounded hover:bg-gray-100"><ChevronRight className="w-5 h-5" /></button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="ml-3 p-2 rounded-full bg-white/15 hover:bg-white/25 transition-colors"
+          aria-label="Close"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      <div className="flex-1 flex items-center min-h-0 px-2 sm:px-4 pb-2" onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          onClick={goPrev}
+          className="shrink-0 p-3 sm:p-4 rounded-full bg-white/20 hover:bg-white/35 text-white transition-colors"
+          aria-label="Previous photo"
+        >
+          <ChevronLeft className="w-7 h-7 sm:w-8 sm:h-8" />
+        </button>
+
+        <div className="flex-1 flex items-center justify-center px-2 sm:px-4 min-w-0">
+          <img
+            src={current.url}
+            alt={current.name || 'Photo'}
+            className="max-h-[70vh] sm:max-h-[75vh] max-w-full object-contain rounded-lg shadow-2xl bg-white/10"
+          />
+        </div>
+
+        <button
+          type="button"
+          onClick={goNext}
+          className="shrink-0 p-3 sm:p-4 rounded-full bg-white/20 hover:bg-white/35 text-white transition-colors"
+          aria-label="Next photo"
+        >
+          <ChevronRight className="w-7 h-7 sm:w-8 sm:h-8" />
+        </button>
+      </div>
+
+      <div
+        className="px-4 pb-4 pt-2 overflow-x-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex gap-2 justify-center min-w-min mx-auto">
+          {gallery.map((photo, i) => {
+            const isCover = primaryPhotoId && String(photo.id) === String(primaryPhotoId);
+            const active = i === safeIndex;
+            return (
+              <button
+                key={photo.id || i}
+                type="button"
+                onClick={() => onIndexChange(i)}
+                className={`relative shrink-0 w-16 h-16 rounded-md overflow-hidden border-2 transition-all ${
+                  active ? 'border-white shadow-lg scale-105' : 'border-white/30 opacity-80 hover:opacity-100'
+                }`}
+              >
+                <img src={photo.url} alt="" className="w-full h-full object-cover" />
+                {isCover && (
+                  <span className="absolute top-0.5 left-0.5 bg-amber-400 text-slate-900 rounded px-0.5">
+                    <Star className="w-3 h-3 fill-current" />
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>
   );
 }
 
-function AllPhotosModal({ selectedCategories, onClose, onToggleCategory, onSelectAll, allCategories }) {
+function EventGallery({ event, startIndex = 0, onClose }) {
+  const [index, setIndex] = useState(startIndex);
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
-  const contentRef = useRef(null);
-  const [showBackToTop, setShowBackToTop] = useState(false);
 
   useEffect(() => {
     const loadPhotos = async () => {
+      if (!event?.id) {
+        setLoading(false);
+        return;
+      }
       try {
         setLoading(true);
-        const allPhotos = await fetchPhotos();
-        setPhotos(allPhotos);
+        const tagged = await getPhotosForEvent(event.id);
+        const byUrl = new Set(tagged.map((p) => p.url).filter(Boolean));
+        // Legacy cover only if not already in library
+        if (event.image && !byUrl.has(event.image) && !event.primary_photo_id) {
+          setPhotos([
+            { id: 'main', url: event.image, name: event.title || 'Cover', category: event.category },
+            ...tagged
+          ]);
+        } else {
+          setPhotos(tagged);
+        }
       } catch (err) {
-        console.error('Error loading photos:', err);
+        console.error('Error loading event photos:', err);
+        setPhotos([]);
       } finally {
         setLoading(false);
       }
     };
     loadPhotos();
-  }, []);
+  }, [event?.id, event?.image, event?.title, event?.category, event?.primary_photo_id]);
 
-  const filteredPhotos = photos.filter(p => selectedCategories.has(p.category || 'untagged'));
-
-  const [selectedIdx, setSelectedIdx] = useState(0);
-  // Keep selected index in range as photos/filters change
   useEffect(() => {
-    if (filteredPhotos.length === 0) {
-      setSelectedIdx(0);
-    } else if (selectedIdx < 0 || selectedIdx >= filteredPhotos.length) {
-      setSelectedIdx(0);
-    }
-  }, [filteredPhotos.length, selectedIdx]);
-  const selectPrev = () => setSelectedIdx((i) => (i - 1 + filteredPhotos.length) % filteredPhotos.length);
-  const selectNext = () => setSelectedIdx((i) => (i + 1) % filteredPhotos.length);
+    setIndex(Math.min(startIndex, Math.max(0, photos.length - 1)));
+  }, [photos.length, startIndex]);
 
-  const [lightboxIdx, setLightboxIdx] = useState(null);
-  const openLightbox = (absoluteIdx) => setLightboxIdx(absoluteIdx);
-  const closeLightbox = () => setLightboxIdx(null);
-  const lbPrev = () => setLightboxIdx((i) => (i - 1 + filteredPhotos.length) % filteredPhotos.length);
-  const lbNext = () => setLightboxIdx((i) => (i + 1) % filteredPhotos.length);
+  if (!event) return null;
 
-  // Event Photos modal does not include Manage Photos/AI
-
-  // Track scroll to toggle back-to-top button
-  useEffect(() => {
-    const el = contentRef.current;
-    if (!el) return;
-    const onScroll = () => setShowBackToTop(el.scrollTop > 300);
-    el.addEventListener('scroll', onScroll);
-    return () => el.removeEventListener('scroll', onScroll);
-  }, []);
-
-  const scrollToTop = () => {
-    const el = contentRef.current;
-    if (el) el.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  // Removed AI actions (run/apply/undo) from Event Photos modal
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-screen-2xl max-h-[90vh] overflow-hidden flex flex-col">
-        <div className="flex items-center justify-between p-4 border-b">
-          <div className="flex items-center gap-3">
-            <Images className="w-5 h-5 text-gray-700" />
-            <h3 className="text-lg font-semibold text-gray-900">Event Photos</h3>
-          </div>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-        <div ref={contentRef} className="flex-1 overflow-y-auto p-4 relative">
-          <div className="flex flex-wrap gap-2 mb-4 items-start">
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={onSelectAll}
-                className="px-3 py-1 rounded-full border border-gray-300 bg-white text-sm text-gray-700 hover:bg-gray-50"
-                title={Object.keys(allCategories).every(key => selectedCategories.has(key)) ? "Deselect all categories" : "Select all categories"}
-              >
-                {Object.keys(allCategories).every(key => selectedCategories.has(key)) ? "Select None" : "Select All"}
-              </button>
-                {Object.entries(allCategories).map(([key, config]) => {
-                const active = selectedCategories.has(key);
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => onToggleCategory(key)}
-                    className={`px-3 py-1 rounded-full border text-sm ${active ? 'border-gray-300 bg-white' : 'border-gray-200 bg-gray-50 opacity-70'}`}
-                  >
-                    {config.label}
-                  </button>
-                );
-              })}
-            </div>
-              <div className="ml-auto flex items-center gap-2" />
-          </div>
-
-          {/* Manage Photos was removed from this modal */}
-
-          {loading ? (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-              <div className="text-sm text-gray-600">Loading photos...</div>
-            </div>
-          ) : filteredPhotos.length === 0 ? (
-            <div className="text-sm text-gray-600">No photos for the selected filters.</div>
-          ) : (
-            <div>
-              {/* Viewer */}
-              <div className="mb-4">
-                <div className="w-full h-72 bg-gray-100 rounded flex items-center justify-center overflow-hidden">
-                  {filteredPhotos[selectedIdx]?.url && (
-                    <img src={filteredPhotos[selectedIdx].url} alt={filteredPhotos[selectedIdx].name} className="max-h-full max-w-full object-contain" />
-                  )}
-                </div>
-                <div className="flex items-center justify-between mt-2 text-sm">
-                  <button type="button" onClick={selectPrev} className="px-3 py-1.5 border rounded">Previous</button>
-                  <div className="text-gray-600 truncate mx-2 flex-1 text-center" title={filteredPhotos[selectedIdx]?.name}>{filteredPhotos[selectedIdx]?.name || 'Photo'}</div>
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => openLightbox(selectedIdx)} className="px-3 py-1.5 border rounded">Fullscreen</button>
-                    <button type="button" onClick={selectNext} className="px-3 py-1.5 border rounded">Next</button>
-            </div>
-                </div>
-              </div>
-
-              {/* Thumbnail grid */}
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
-                {filteredPhotos.map((p, i) => (
-              <button
-                    key={p.id}
-                type="button"
-                    onClick={() => setSelectedIdx(i)}
-                    className={`bg-gray-100 rounded overflow-hidden cursor-pointer border ${i===selectedIdx ? 'ring-2 ring-blue-500 border-blue-500' : 'border-gray-200'}`}
-                    title={p.name}
-                  >
-                    <img src={p.url} alt={p.name} className="w-full h-32 object-cover" />
-                    <div className="p-2 text-[11px] text-gray-700 text-left">
-                        <div className="font-medium truncate" title={p.name}>{p.name}</div>
-                      <div className="text-gray-500">{allCategories[p.category || 'untagged']?.label || (p.category || 'Untagged')}</div>
-                      </div>
-                  </button>
-                ))}
-                    </div>
-              </div>
-          )}
-
-          {showBackToTop && (
-              <button
-                type="button"
-              onClick={scrollToTop}
-              className="absolute bottom-4 right-4 px-3 py-2 rounded-full shadow bg-white border text-gray-700 text-sm hover:bg-gray-50"
-              title="Back to top"
-            >
-              ↑ Top
-              </button>
-          )}
+  if (loading) {
+    return (
+      <div className="fixed inset-0 z-[70] flex items-center justify-center" style={{ background: 'rgba(71, 85, 105, 0.72)' }}>
+        <div className="bg-white/95 rounded-xl shadow-xl px-8 py-6 text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2" />
+          <div className="text-sm text-slate-600">Loading photos...</div>
         </div>
       </div>
+    );
+  }
 
-      {lightboxIdx !== null && filteredPhotos[lightboxIdx] && (
-        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
-          <button onClick={closeLightbox} className="absolute top-4 right-4 text-white hover:text-gray-200">
-            <X className="w-6 h-6" />
-          </button>
-          <button onClick={lbPrev} className="absolute left-4 text-white hover:text-gray-200 p-2"><ChevronLeft className="w-8 h-8" /></button>
-          <div className="max-w-5xl w-full">
-            <div className="w-full h-[70vh] bg-black flex items-center justify-center">
-              <img src={filteredPhotos[lightboxIdx].url} alt={filteredPhotos[lightboxIdx].name} className="max-h-full max-w-full object-contain" />
-            </div>
-            <div className="mt-3 text-center text-white text-sm">
-              {filteredPhotos[lightboxIdx].name}
-            </div>
-          </div>
-          <button onClick={lbNext} className="absolute right-4 text-white hover:text-gray-200 p-2"><ChevronRight className="w-8 h-8" /></button>
-        </div>
-      )}
-    </div>
+  return (
+    <ImmersivePhotoViewer
+      photos={photos}
+      index={index}
+      onIndexChange={setIndex}
+      onClose={onClose}
+      title={event.title}
+      primaryPhotoId={event.primary_photo_id}
+    />
   );
 }
 
-// New standalone Manage Photos modal (upload/view/delete)
-function ManagePhotosModal({ allCategories, onClose, onPhotosUpdated }) {
+function PhotoLibraryModal({
+  allCategories,
+  selectedCategories,
+  onToggleCategory,
+  onSelectAll,
+  onClose,
+  onPhotosUpdated,
+  initialMode = 'browse',
+  selectMode = false,
+  excludeIds = [],
+  onSelectPhoto = null
+}) {
+  const [mode, setMode] = useState(selectMode ? 'browse' : initialMode);
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState(null);
   const inputRef = useRef(null);
   const contentRef = useRef(null);
 
+  const loadPhotos = async () => {
+    try {
+      setLoading(true);
+      const allPhotos = await fetchPhotos();
+      setPhotos(allPhotos);
+    } catch (err) {
+      console.error('Error loading photos:', err);
+      alert(`Failed to load photos: ${err.message || 'Please try again'}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const loadPhotos = async () => {
-      try {
-        setLoading(true);
-        console.log('ManagePhotosModal: Loading photos...');
-        const allPhotos = await fetchPhotos();
-        console.log('ManagePhotosModal: Loaded photos:', allPhotos.length);
-        setPhotos(allPhotos);
-      } catch (err) {
-        console.error('Error loading photos:', err);
-        console.error('Error details:', {
-          message: err.message,
-          stack: err.stack
-        });
-        // Show user-friendly error
-        alert(`Failed to load photos: ${err.message || 'Please check console for details'}`);
-      } finally {
-        setLoading(false);
-      }
-    };
     loadPhotos();
   }, []);
+
+  const filteredPhotos = photos.filter((p) => {
+    if (excludeIds.includes(p.id) || excludeIds.includes(String(p.id))) return false;
+    if (selectMode) return true;
+    return selectedCategories.has(p.category || 'untagged');
+  });
 
   const handleFiles = async (files) => {
     const arr = Array.from(files || []);
     if (arr.length === 0) return;
-    
     setUploading(true);
     try {
-      const savePromises = arr.map(async (file) => {
-        try {
-          if (!ALLOWED_PHOTO_TYPES.includes(file.type)) {
-            return { success: false, error: 'Only JPEG, PNG, and WebP are supported', name: file.name };
+      const results = await Promise.all(
+        arr.map(async (file) => {
+          try {
+            if (!ALLOWED_PHOTO_TYPES.includes(file.type)) {
+              return { success: false, name: file.name };
+            }
+            const saved = await uploadPhotoFile(file, { name: file.name, category: 'untagged' });
+            return { success: true, photo: saved };
+          } catch (err) {
+            console.error(`Failed to save photo ${file.name}:`, err);
+            return { success: false, name: file.name };
           }
-          const saved = await uploadPhotoFile(file, {
-            name: file.name,
-            category: 'untagged'
-          });
-          return { success: true, photo: saved };
-        } catch (err) {
-          console.error(`Failed to save photo ${file.name}:`, err);
-          return { success: false, error: err.userMessage || err.message, name: file.name };
-        }
-      });
-      
-      const results = await Promise.all(savePromises);
-      const successful = results.filter(r => r.success).map(r => r.photo);
-      const failed = results.filter(r => !r.success);
-      
+        })
+      );
+      const successful = results.filter((r) => r.success).map((r) => r.photo);
+      const failed = results.filter((r) => !r.success);
       if (successful.length > 0) {
-        setPhotos(prev => [...successful, ...prev]);
+        setPhotos((prev) => [...successful, ...prev]);
         if (onPhotosUpdated) onPhotosUpdated();
       }
-      
       if (failed.length > 0) {
-        const failedNames = failed.map(f => f.name).join(', ');
-        alert(`Failed to upload ${failed.length} photo(s): ${failedNames}`);
-      }
-      
-      if (successful.length === 0 && failed.length > 0) {
-        alert('Failed to upload all photos. Please check the console for details.');
+        alert(`Failed to upload ${failed.length} photo(s): ${failed.map((f) => f.name).join(', ')}`);
       }
     } catch (err) {
-      console.error('Error uploading photos:', err);
       alert(`Failed to upload photos: ${err.message}`);
     } finally {
       setUploading(false);
     }
   };
 
-  const onDrop = (e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); };
-  const onDragOver = (e) => e.preventDefault();
-  
   const removeOne = async (id) => {
     try {
       await deletePhoto(id);
-      setPhotos(prev => prev.filter(p => p.id !== id));
+      setPhotos((prev) => prev.filter((p) => p.id !== id));
       if (onPhotosUpdated) onPhotosUpdated();
     } catch (err) {
-      console.error('Error deleting photo:', err);
       alert('Failed to delete photo. Please try again.');
     }
   };
-  
+
   const clearAll = async () => {
-    if (!window.confirm('Are you sure you want to delete all photos?')) return;
+    if (!window.confirm('Delete all photos from your library? This cannot be undone.')) return;
     try {
-      await Promise.all(photos.map(p => deletePhoto(p.id)));
+      await Promise.all(photos.map((p) => deletePhoto(p.id)));
       setPhotos([]);
       if (onPhotosUpdated) onPhotosUpdated();
     } catch (err) {
-      console.error('Error deleting photos:', err);
       alert('Failed to delete some photos. Please try again.');
     }
   };
-  
+
   const updatePhotoCategory = async (photoId, category) => {
     try {
       const updated = await updatePhoto(photoId, { category });
-      setPhotos(prev => prev.map(p => p.id === photoId ? updated : p));
+      setPhotos((prev) => prev.map((p) => (p.id === photoId ? updated : p)));
       if (onPhotosUpdated) onPhotosUpdated();
     } catch (err) {
-      console.error('Error updating photo category:', err);
-      alert('Failed to update photo category. Please try again.');
+      alert('Failed to update photo category.');
     }
   };
 
+  const categoryKeys = Object.keys(allCategories);
+  const allSelected = categoryKeys.every((key) => selectedCategories.has(key));
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-screen-2xl max-h-[90vh] overflow-hidden flex flex-col">
-        <div className="flex items-center justify-between p-4 border-b">
-          <div className="flex items-center gap-3">
-            <Images className="w-5 h-5 text-gray-700" />
-            <h3 className="text-lg font-semibold text-gray-900">Manage Photos</h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(71, 85, 105, 0.55)' }}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-screen-2xl max-h-[92vh] overflow-hidden flex flex-col border border-slate-200">
+        <div className="flex items-center justify-between gap-3 p-4 border-b border-slate-200">
+          <div className="flex items-center gap-3 min-w-0">
+            <Images className="w-5 h-5 text-slate-700 shrink-0" />
+            <div className="min-w-0">
+              <h3 className="text-lg font-semibold text-slate-900">
+                {selectMode ? 'Add from Photo Library' : 'Photo Library'}
+              </h3>
+              <p className="text-xs text-slate-500 truncate">
+                {selectMode ? 'Click a photo to add it to this event' : 'Browse and manage all your pictures'}
+              </p>
+            </div>
           </div>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700"><X className="w-5 h-5" /></button>
+          <div className="flex items-center gap-2 shrink-0">
+            {!selectMode && (
+              <div className="flex rounded-lg border border-slate-200 overflow-hidden text-sm">
+                <button
+                  type="button"
+                  onClick={() => setMode('browse')}
+                  className={`px-3 py-1.5 ${mode === 'browse' ? 'bg-slate-800 text-white' : 'bg-white text-slate-700 hover:bg-slate-50'}`}
+                >
+                  Browse
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode('manage')}
+                  className={`px-3 py-1.5 ${mode === 'manage' ? 'bg-slate-800 text-white' : 'bg-white text-slate-700 hover:bg-slate-50'}`}
+                >
+                  Manage
+                </button>
+              </div>
+            )}
+            <button type="button" onClick={onClose} className="p-2 text-slate-500 hover:text-slate-800 rounded-lg hover:bg-slate-100">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
+
         <div ref={contentRef} className="flex-1 overflow-y-auto p-4">
-          <div
-            onDrop={onDrop}
-            onDragOver={onDragOver}
-            onClick={() => inputRef.current?.click()}
-            className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-blue-400"
-          >
-            <div className="text-gray-600">Drag & drop photos here, or click to select</div>
-            <div className="text-xs text-gray-400 mt-1">JPG, PNG, WebP. Many files supported.</div>
-            <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
-          </div>
+          {mode === 'manage' && !selectMode && (
+            <div
+              onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}
+              onDragOver={(e) => e.preventDefault()}
+              onClick={() => inputRef.current?.click()}
+              className="mb-4 border-2 border-dashed border-slate-300 rounded-xl p-6 text-center cursor-pointer hover:border-blue-400 hover:bg-slate-50 transition-colors"
+            >
+              <Camera className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+              <div className="text-slate-700 font-medium">Drag & drop photos here, or click to select</div>
+              <div className="text-xs text-slate-400 mt-1">JPEG, PNG, WebP</div>
+              <input
+                ref={inputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                className="hidden"
+                onChange={(e) => handleFiles(e.target.files)}
+              />
+            </div>
+          )}
 
           {uploading && (
-            <div className="mt-4 text-center py-4">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
-              <div className="text-sm text-gray-600">Uploading photos...</div>
+            <div className="mb-4 text-center py-3 text-sm text-slate-600">Uploading photos...</div>
+          )}
+
+          {!selectMode && (
+            <div className="flex flex-wrap gap-2 mb-4 items-center">
+              <button
+                type="button"
+                onClick={onSelectAll}
+                className="px-3 py-1 rounded-full border border-slate-300 bg-white text-sm text-slate-700 hover:bg-slate-50"
+              >
+                {allSelected ? 'Select None' : 'Select All'}
+              </button>
+              {Object.entries(allCategories).map(([key, config]) => {
+                const active = selectedCategories.has(key);
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => onToggleCategory(key)}
+                    className={`px-3 py-1 rounded-full border text-sm ${
+                      active ? 'border-slate-300 bg-white text-slate-800' : 'border-slate-200 bg-slate-50 text-slate-500 opacity-70'
+                    }`}
+                  >
+                    {config.label}
+                  </button>
+                );
+              })}
+              {mode === 'manage' && photos.length > 0 && (
+                <button
+                  type="button"
+                  onClick={clearAll}
+                  className="ml-auto text-xs px-2 py-1 border border-red-200 text-red-700 rounded hover:bg-red-50"
+                >
+                  Clear all
+                </button>
+              )}
             </div>
           )}
 
           {loading ? (
-            <div className="mt-4 text-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-              <div className="text-sm text-gray-600">Loading photos...</div>
+            <div className="text-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2" />
+              <div className="text-sm text-slate-600">Loading photos...</div>
             </div>
-          ) : photos.length > 0 && (
-            <div className="mt-4">
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-sm text-gray-700">Total photos: {photos.length}</div>
-                <button type="button" onClick={clearAll} className="text-xs px-2 py-1 border rounded hover:bg-red-50">Clear All</button>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
-                {photos.map((p) => (
-                  <div key={p.id} className="relative group">
-                    <img src={p.url} alt={p.name} className="w-full h-28 object-cover rounded" />
-                    <div className="absolute inset-x-0 bottom-0 bg-black/50 text-white text-[11px] px-1 py-0.5 truncate">{p.name}</div>
-                    <button type="button" onClick={() => removeOne(p.id)} className="absolute top-1 right-1 hidden group-hover:block text-[10px] px-1.5 py-0.5 bg-white/90 border rounded hover:bg-red-50">Delete</button>
-                    <select
-                      value={p.category || 'untagged'}
-                      onChange={(e) => updatePhotoCategory(p.id, e.target.value)}
-                      className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-[10px] px-1 py-0.5 w-full"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {Object.entries(allCategories).map(([key, config]) => (
-                        <option key={key} value={key}>{config.label}</option>
-                      ))}
-                    </select>
+          ) : filteredPhotos.length === 0 ? (
+            <div className="text-center py-12 text-slate-500">
+              {selectMode
+                ? 'No more photos available. Upload some in Manage mode from Photo Library.'
+                : 'No photos for the selected filters.'}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              {filteredPhotos.map((p, i) => (
+                <div key={p.id} className="group relative rounded-lg overflow-hidden border border-slate-200 bg-slate-50 shadow-sm">
+                  <button
+                    type="button"
+                    className="w-full aspect-square block"
+                    onClick={() => {
+                      if (selectMode && onSelectPhoto) {
+                        onSelectPhoto(p);
+                        return;
+                      }
+                      setViewerIndex(i);
+                    }}
+                    title={selectMode ? 'Add to event' : p.name}
+                  >
+                    <img src={p.url} alt={p.name} className="w-full h-full object-cover" />
+                  </button>
+                  <div className="px-2 py-1.5 bg-white border-t border-slate-100">
+                    <div className="text-[11px] text-slate-700 truncate font-medium" title={p.name}>{p.name}</div>
+                    <div className="text-[10px] text-slate-500 truncate">
+                      {allCategories[p.category || 'untagged']?.label || p.category || 'Untagged'}
+                    </div>
                   </div>
-                ))}
-              </div>
+                  {mode === 'manage' && !selectMode && (
+                    <div className="absolute top-2 right-2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <select
+                        value={p.category || 'untagged'}
+                        onChange={(e) => updatePhotoCategory(p.id, e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-[10px] px-1 py-0.5 rounded bg-white/95 border shadow"
+                      >
+                        {Object.entries(allCategories).map(([key, config]) => (
+                          <option key={key} value={key}>{config.label}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); removeOne(p.id); }}
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-white/95 border shadow hover:bg-red-50 text-red-700"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </div>
-        <div className="p-3 border-t bg-gray-50 text-right">
-          <button type="button" onClick={onClose} className="px-3 py-2 border rounded">Close</button>
+
+        <div className="p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-sm text-slate-600">
+          <span>{filteredPhotos.length} photo{filteredPhotos.length === 1 ? '' : 's'}</span>
+          <button type="button" onClick={onClose} className="px-3 py-2 border rounded-lg bg-white hover:bg-slate-50">
+            Close
+          </button>
         </div>
       </div>
+
+      {viewerIndex !== null && (
+        <ImmersivePhotoViewer
+          photos={filteredPhotos}
+          index={viewerIndex}
+          onIndexChange={setViewerIndex}
+          onClose={() => setViewerIndex(null)}
+          title="Photo Library"
+        />
+      )}
     </div>
   );
 }
@@ -1703,13 +1737,16 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
     }
   };
 
-  const handleSelectPhoto = async (photoId) => {
-    // Add photo to tagged list (will be tagged when event is saved)
-    const photo = availablePhotos.find(p => p.id === photoId);
-    if (photo && !taggedPhotos.find(p => p.id === photoId)) {
-      setTaggedPhotos(prev => [...prev, photo]);
-      setShowPhotoSelector(false);
+  const handleSelectPhoto = (photoOrId) => {
+    const photo =
+      typeof photoOrId === 'object' && photoOrId?.id
+        ? photoOrId
+        : availablePhotos.find((p) => p.id === photoOrId);
+    if (!photo) return;
+    if (!taggedPhotos.find((p) => String(p.id) === String(photo.id))) {
+      setTaggedPhotos((prev) => [...prev, photo]);
     }
+    setShowPhotoSelector(false);
   };
 
   const handleUntagPhoto = (photoId) => {
@@ -1892,123 +1929,133 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
                   </h3>
                   <span className="text-sm text-gray-500">{taggedPhotos.length} photos</span>
                 </div>
-                
-                <div className="space-y-4">
-                  {/* Main Photo */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Main Photo</label>
-                    <div 
-                      onClick={() => fileInputRef.current?.click()}
-                      className="w-full h-32 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center cursor-pointer hover:border-blue-400 transition-colors"
-                    >
-                      {imagePreview ? (
-                        <img src={imagePreview} alt="Preview" className="w-full h-full object-cover rounded-lg" />
-                      ) : (
-                        <div className="text-center">
-                          <Camera className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                          <p className="text-sm text-gray-500">Click to add photo</p>
-                        </div>
-                      )}
-                    </div>
-                    <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleImageUpload} />
-                    {isUploadingPhotos && (
-                      <p className="text-xs text-gray-500 mt-1">Uploading photo...</p>
-                    )}
-                  </div>
 
-                  {/* Tagged Photos */}
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="text-sm font-medium text-gray-700">Event Photos</label>
-                      <div className="flex gap-2">
-                        <button type="button" onClick={() => setShowPhotoSelector(true)} className="text-sm text-blue-600 hover:underline">Select from Library</button>
-                        <button type="button" onClick={() => galleryInputRef.current?.click()} className="text-sm text-blue-600 hover:underline">Upload New</button>
-                      </div>
-                    </div>
-                    <input ref={galleryInputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={handleGalleryUpload} className="hidden" />
-                    
-                    {taggedPhotos.length > 0 && (
-                      <div className="grid grid-cols-2 gap-2">
-                        {taggedPhotos.map((photo) => {
-                          const isPrimary = formData.primary_photo_id
-                            ? String(formData.primary_photo_id) === String(photo.id)
-                            : formData.image === photo.url;
-                          return (
-                            <div key={photo.id} className="relative group">
-                              <img src={photo.url} alt={photo.name} className={`w-full h-20 object-cover rounded ${isPrimary ? 'ring-2 ring-blue-500' : ''}`} />
-                              <div className="absolute inset-0 flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                {!isPrimary && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setFormData(prev => ({
-                                        ...prev,
-                                        image: photo.url,
-                                        primary_photo_id: photo.id
-                                      }));
-                                      setImagePreview(photo.url);
-                                    }}
-                                    className="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
-                                    title="Set as primary"
-                                  >
-                                    Set Primary
-                                  </button>
-                                )}
-                                {isPrimary && (
-                                  <span className="text-xs px-2 py-1 bg-blue-500 text-white rounded">Primary</span>
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={() => handleUntagPhoto(photo.id)}
-                                  className="text-xs px-1.5 py-0.5 bg-red-500 text-white rounded hover:bg-red-600"
-                                  title="Remove photo"
-                                >
-                                  ×
-                                </button>
-                              </div>
-                              <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[10px] px-1 py-0.5 truncate">{photo.name}</div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+                <div className="space-y-3">
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => galleryInputRef.current?.click()}
+                      className="px-3 py-1.5 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+                    >
+                      Upload
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowPhotoSelector(true)}
+                      className="px-3 py-1.5 text-sm rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                    >
+                      Add from library
+                    </button>
+                    <input
+                      ref={galleryInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      multiple
+                      onChange={handleGalleryUpload}
+                      className="hidden"
+                    />
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={handleImageUpload}
+                    />
                   </div>
-                  
-                  {/* Photo Selector Modal */}
-                  {showPhotoSelector && (
-                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
-                        <div className="flex items-center justify-between p-4 border-b">
-                          <h3 className="text-lg font-semibold">Select Photos from Library</h3>
-                          <button onClick={() => setShowPhotoSelector(false)} className="text-gray-500 hover:text-gray-700">
-                            <X className="w-5 h-5" />
-                          </button>
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-4">
-                          {availablePhotos.length === 0 ? (
-                            <div className="text-center py-8 text-gray-500">No photos available. Upload photos in Manage Photos first.</div>
-                          ) : (
-                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
-                              {availablePhotos
-                                .filter(p => !taggedPhotos.find(tp => tp.id === p.id))
-                                .map((photo) => (
+                  {isUploadingPhotos && (
+                    <p className="text-xs text-gray-500">Uploading photo...</p>
+                  )}
+
+                  {taggedPhotos.length === 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => galleryInputRef.current?.click()}
+                      className="w-full h-28 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-gray-500 hover:border-blue-400 hover:bg-white transition-colors"
+                    >
+                      <Camera className="w-7 h-7 mb-1 text-gray-400" />
+                      <span className="text-sm">Add photos for this event</span>
+                    </button>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      {taggedPhotos.map((photo) => {
+                        const isCover = formData.primary_photo_id
+                          ? String(formData.primary_photo_id) === String(photo.id)
+                          : formData.image === photo.url;
+                        return (
+                          <div
+                            key={photo.id}
+                            className={`relative group rounded-lg overflow-hidden border bg-white ${
+                              isCover ? 'ring-2 ring-amber-400 border-amber-300' : 'border-slate-200'
+                            }`}
+                          >
+                            <img src={photo.url} alt={photo.name} className="w-full h-24 object-cover" />
+                            {isCover && (
+                              <span className="absolute top-1 left-1 inline-flex items-center gap-0.5 bg-amber-400 text-slate-900 text-[10px] font-semibold px-1.5 py-0.5 rounded">
+                                <Star className="w-3 h-3 fill-current" />
+                                Cover
+                              </span>
+                            )}
+                            <div className="absolute inset-0 bg-slate-900/0 group-hover:bg-slate-900/35 transition-colors flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100">
+                              {!isCover && (
                                 <button
-                                  key={photo.id}
                                   type="button"
-                                  onClick={() => handleSelectPhoto(photo.id)}
-                                  className="relative group aspect-square"
+                                  onClick={() => {
+                                    setFormData((prev) => ({
+                                      ...prev,
+                                      image: photo.url,
+                                      primary_photo_id: photo.id
+                                    }));
+                                    setImagePreview(photo.url);
+                                  }}
+                                  className="text-[10px] px-2 py-1 bg-white text-slate-800 rounded shadow hover:bg-amber-50"
+                                  title="Set as cover"
                                 >
-                                  <img src={photo.url} alt={photo.name} className="w-full h-full object-cover rounded" />
-                                  <div className="absolute inset-0 bg-blue-500/0 group-hover:bg-blue-500/20 transition-colors rounded flex items-center justify-center">
-                                    <span className="text-white text-xs opacity-0 group-hover:opacity-100">Select</span>
-                                  </div>
+                                  Set cover
                                 </button>
-                              ))}
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleUntagPhoto(photo.id)}
+                                className="text-[10px] px-2 py-1 bg-red-500 text-white rounded shadow hover:bg-red-600"
+                                title="Remove from event"
+                              >
+                                Remove
+                              </button>
                             </div>
-                          )}
-                        </div>
-                      </div>
+                          </div>
+                        );
+                      })}
                     </div>
+                  )}
+
+                  {imagePreview && taggedPhotos.length > 0 && (
+                    <p className="text-xs text-slate-500">
+                      Cover photo appears on the timeline card.
+                    </p>
+                  )}
+
+                  {showPhotoSelector && (
+                    <PhotoLibraryModal
+                      allCategories={allCategories}
+                      selectedCategories={new Set(Object.keys(allCategories))}
+                      onToggleCategory={() => {}}
+                      onSelectAll={() => {}}
+                      onClose={() => setShowPhotoSelector(false)}
+                      selectMode
+                      excludeIds={taggedPhotos.map((p) => p.id)}
+                      onSelectPhoto={(photo) => {
+                        handleSelectPhoto(photo);
+                        setFormData((prev) => {
+                          if (prev.primary_photo_id || prev.image) return prev;
+                          return {
+                            ...prev,
+                            image: photo.url,
+                            primary_photo_id: photo.id
+                          };
+                        });
+                        setImagePreview((prev) => prev || photo.url);
+                      }}
+                    />
                   )}
                 </div>
               </div>
@@ -2545,9 +2592,9 @@ function EventFull() {
   const allCategories = getAllCategories();
   const allCategoryKeys = Object.keys(allCategories);
   const [selectedCategories, setSelectedCategories] = useState(new Set(allCategoryKeys));
-  const [showAllPhotos, setShowAllPhotos] = useState(false);
+  const [showPhotoLibrary, setShowPhotoLibrary] = useState(false);
+  const [photoLibraryMode, setPhotoLibraryMode] = useState('browse');
   const [photosMenuOpen, setPhotosMenuOpen] = useState(false);
-  const [showManagePhotos, setShowManagePhotos] = useState(false);
   const [showAllJournals, setShowAllJournals] = useState(false);
   const [galleryForEvent, setGalleryForEvent] = useState(null);
   const [galleryStartIndex, setGalleryStartIndex] = useState(0);
@@ -2990,20 +3037,20 @@ function EventFull() {
                   <ChevronDown className="w-4 h-4" />
                 </button>
                 {photosMenuOpen && (
-                  <div className="absolute right-0 mt-1 w-44 bg-white border rounded-md shadow-lg z-10">
+                  <div className="absolute right-0 mt-1 w-48 bg-white border rounded-md shadow-lg z-10">
                     <button
                       type="button"
-                      onClick={() => { setShowAllPhotos(true); setPhotosMenuOpen(false); }}
+                      onClick={() => { setPhotoLibraryMode('browse'); setShowPhotoLibrary(true); setPhotosMenuOpen(false); }}
                       className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
                     >
-                      Event Photos
+                      Photo Library
                     </button>
                     <button
                       type="button"
-                      onClick={() => { setShowManagePhotos(true); setPhotosMenuOpen(false); }}
+                      onClick={() => { setPhotoLibraryMode('manage'); setShowPhotoLibrary(true); setPhotosMenuOpen(false); }}
                       className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
                     >
-                      Manage Photos
+                      Manage uploads
                     </button>
                   </div>
                 )}
@@ -3126,20 +3173,14 @@ function EventFull() {
         )}
 
         {/* Other modals */}
-        {showAllPhotos && (
-          <AllPhotosModal
+        {showPhotoLibrary && (
+          <PhotoLibraryModal
             selectedCategories={selectedCategories}
             onToggleCategory={toggleCategory}
             onSelectAll={selectAllCategories}
-            onClose={() => setShowAllPhotos(false)}
+            onClose={() => setShowPhotoLibrary(false)}
             allCategories={allCategories}
-          />
-        )}
-
-        {showManagePhotos && (
-          <ManagePhotosModal
-            allCategories={allCategories}
-            onClose={() => setShowManagePhotos(false)}
+            initialMode={photoLibraryMode}
             onPhotosUpdated={() => {}}
           />
         )}
@@ -3386,20 +3427,20 @@ function EventFull() {
                 <ChevronDown className="w-4 h-4" />
             </button>
               {photosMenuOpen && (
-                <div className="absolute right-0 mt-1 w-44 bg-white border rounded-md shadow-lg z-10">
+                <div className="absolute right-0 mt-1 w-48 bg-white border rounded-md shadow-lg z-10">
                   <button
                     type="button"
-                    onClick={() => { setShowAllPhotos(true); setPhotosMenuOpen(false); }}
+                    onClick={() => { setPhotoLibraryMode('browse'); setShowPhotoLibrary(true); setPhotosMenuOpen(false); }}
                     className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
                   >
-                    Event Photos
+                    Photo Library
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setShowManagePhotos(true); setPhotosMenuOpen(false); }}
+                    onClick={() => { setPhotoLibraryMode('manage'); setShowPhotoLibrary(true); setPhotosMenuOpen(false); }}
                     className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
                   >
-                    Manage Photos
+                    Manage uploads
                   </button>
                 </div>
               )}
@@ -3606,15 +3647,18 @@ function EventFull() {
                       {/* Event Image - Show primary image (event.image) or first tagged photo */}
                       {(() => {
                         const eventPhotos = event.taggedPhotos || [];
-                        // Prioritize event.image (primary) over tagged photos
                         const displayImage = event.image || (eventPhotos.length > 0 ? eventPhotos[0].url : null);
-                        const photoCount = eventPhotos.length;
+                        // Count linked library photos; include legacy cover only if not already tagged
+                        const urls = new Set(eventPhotos.map((p) => p.url).filter(Boolean));
+                        const photoCount =
+                          eventPhotos.length +
+                          (event.image && !urls.has(event.image) && !event.primary_photo_id ? 1 : 0);
                         
                         if (displayImage) {
                           return (
                             <div 
                               className="w-full bg-gray-100 overflow-hidden cursor-pointer relative" 
-                              title={photoCount > 0 ? `View ${photoCount} photo(s)` : "View photos"} 
+                              title={photoCount > 0 ? `View ${photoCount} photo(s)` : 'View photos'} 
                               onClick={(e) => { e.stopPropagation(); setGalleryForEvent(event); setGalleryStartIndex(0); }}
                               style={{ height: `${128 * zoom}px` }}
                             >
@@ -3624,7 +3668,7 @@ function EventFull() {
                                 className="w-full h-full object-cover"
                               />
                               {photoCount > 0 && (
-                                <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded flex items-center gap-1">
+                                <div className="absolute top-2 right-2 bg-slate-800/70 text-white text-xs px-2 py-1 rounded-md flex items-center gap-1 shadow">
                                   <Camera style={{ width: '12px', height: '12px' }} />
                                   <span>{photoCount}</span>
                                 </div>
@@ -3800,23 +3844,16 @@ function EventFull() {
         />
       )}
 
-      {/* All Photos Modal */}
-      {showAllPhotos && (
-        <AllPhotosModal
+      {/* Photo Library */}
+      {showPhotoLibrary && (
+        <PhotoLibraryModal
           selectedCategories={selectedCategories}
           onToggleCategory={toggleCategory}
           onSelectAll={selectAllCategories}
-          onClose={() => setShowAllPhotos(false)}
+          onClose={() => setShowPhotoLibrary(false)}
           allCategories={allCategories}
-        />
-      )}
-
-  {/* Manage Photos Modal */}
-  {showManagePhotos && (
-    <ManagePhotosModal
-      allCategories={allCategories}
-      onClose={() => setShowManagePhotos(false)}
-      onPhotosUpdated={() => {}}
+          initialMode={photoLibraryMode}
+          onPhotosUpdated={() => {}}
         />
       )}
 
