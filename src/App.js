@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, ZoomIn, ZoomOut, Calendar, Heart, GraduationCap, Briefcase, Baby, Star, X, Camera, ChevronLeft, ChevronRight, Images, BookOpen, Settings, ChevronDown, LogOut } from 'lucide-react';
+import { Plus, ZoomIn, ZoomOut, Calendar, Heart, GraduationCap, Briefcase, Baby, Star, X, Camera, ChevronLeft, ChevronRight, Images, BookOpen, Settings, ChevronDown, LogOut, Sparkles } from 'lucide-react';
 import { fetchEvents, createEvent, updateEvent, deleteEvent, fetchTimelines, createTimeline, updateTimeline, deleteTimeline, shareTimeline, fetchSharedTimelines, fetchUserSettings, updateUserSettings, fetchPhotos, uploadPhotoFile, updatePhoto, deletePhoto, tagPhotoToEvent, untagPhotoFromEvent, getPhotosForEvent, migrateLegacyPhotosToStorage, ALLOWED_PHOTO_TYPES } from './api/events';
 import { testConnection } from './utils/testSupabaseConnection';
 import { useAuth } from './contexts/AuthContext';
 import AuthModal from './components/AuthModal';
-// Optional AI import (safe to remove)
-// import { classifyPhotos } from './ai/PhotoClassifier';
+import PhotoSortReview from './components/PhotoSortReview';
+import { classifyPhotos } from './ai/PhotoClassifier';
 
 // [Then all your EventFull component code...]
 
@@ -982,6 +982,9 @@ function PhotoLibraryModal({
   onSelectAll,
   onClose,
   onPhotosUpdated,
+  onEventsUpdated,
+  events = [],
+  timelineId = null,
   initialMode = 'browse',
   selectMode = false,
   excludeIds = [],
@@ -992,6 +995,10 @@ function PhotoLibraryModal({
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [viewerIndex, setViewerIndex] = useState(null);
+  const [sortSelectMode, setSortSelectMode] = useState(false);
+  const [sortSelectedIds, setSortSelectedIds] = useState(() => new Set());
+  const [sorting, setSorting] = useState(false);
+  const [sortReview, setSortReview] = useState(null);
   const inputRef = useRef(null);
   const contentRef = useRef(null);
 
@@ -1084,6 +1091,50 @@ function PhotoLibraryModal({
     }
   };
 
+  const toggleSortSelect = (photoId) => {
+    const id = String(photoId);
+    setSortSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const runAiSort = async () => {
+    const candidates = sortSelectMode && sortSelectedIds.size > 0
+      ? filteredPhotos.filter((p) => sortSelectedIds.has(String(p.id)))
+      : filteredPhotos;
+
+    if (candidates.length === 0) {
+      alert('No photos to sort. Upload or show some photos first.');
+      return;
+    }
+
+    const sortable = candidates.filter((p) => p.url && /^https?:\/\//i.test(p.url));
+    if (sortable.length === 0) {
+      alert('These photos need public web URLs for AI sorting. Re-upload them if needed.');
+      return;
+    }
+
+    if (!window.confirm(`Sort ${sortable.length} photo(s) with AI? You can review before anything is applied.`)) {
+      return;
+    }
+
+    setSorting(true);
+    try {
+      const suggestions = await classifyPhotos(sortable, events || []);
+      setSortReview({ photos: sortable, suggestions });
+      setSortSelectMode(false);
+      setSortSelectedIds(new Set());
+    } catch (err) {
+      console.error('AI sort failed:', err);
+      alert(err.message || 'AI sort failed. Check that the sort-photos function is deployed and ANTHROPIC_API_KEY is set.');
+    } finally {
+      setSorting(false);
+    }
+  };
+
   const categoryKeys = Object.keys(allCategories);
   const allSelected = categoryKeys.every((key) => selectedCategories.has(key));
 
@@ -1098,28 +1149,58 @@ function PhotoLibraryModal({
                 {selectMode ? 'Add from Photo Library' : 'Photo Library'}
               </h3>
               <p className="text-xs text-slate-500 truncate">
-                {selectMode ? 'Click a photo to add it to this event' : 'Browse and manage all your pictures'}
+                {selectMode
+                  ? 'Click a photo to add it to this event'
+                  : sortSelectMode
+                    ? 'Click photos to select, then run Sort with AI'
+                    : 'Browse and manage all your pictures'}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {!selectMode && (
-              <div className="flex rounded-lg border border-slate-200 overflow-hidden text-sm">
+              <>
                 <button
                   type="button"
-                  onClick={() => setMode('browse')}
-                  className={`px-3 py-1.5 ${mode === 'browse' ? 'bg-slate-800 text-white' : 'bg-white text-slate-700 hover:bg-slate-50'}`}
+                  disabled={sorting || loading || filteredPhotos.length === 0}
+                  onClick={runAiSort}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-slate-800 text-white hover:bg-slate-900 disabled:opacity-50"
+                  title="Group photos into events with Claude"
                 >
-                  Browse
+                  <Sparkles className="w-4 h-4" />
+                  {sorting ? 'Sorting…' : 'Sort with AI'}
                 </button>
                 <button
                   type="button"
-                  onClick={() => setMode('manage')}
-                  className={`px-3 py-1.5 ${mode === 'manage' ? 'bg-slate-800 text-white' : 'bg-white text-slate-700 hover:bg-slate-50'}`}
+                  onClick={() => {
+                    setSortSelectMode((v) => !v);
+                    setSortSelectedIds(new Set());
+                  }}
+                  className={`px-3 py-1.5 text-sm rounded-lg border ${
+                    sortSelectMode
+                      ? 'border-slate-800 bg-slate-100 text-slate-900'
+                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                  }`}
                 >
-                  Manage
+                  {sortSelectMode ? 'Cancel select' : 'Select for AI'}
                 </button>
-              </div>
+                <div className="flex rounded-lg border border-slate-200 overflow-hidden text-sm">
+                  <button
+                    type="button"
+                    onClick={() => setMode('browse')}
+                    className={`px-3 py-1.5 ${mode === 'browse' ? 'bg-slate-800 text-white' : 'bg-white text-slate-700 hover:bg-slate-50'}`}
+                  >
+                    Browse
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMode('manage')}
+                    className={`px-3 py-1.5 ${mode === 'manage' ? 'bg-slate-800 text-white' : 'bg-white text-slate-700 hover:bg-slate-50'}`}
+                  >
+                    Manage
+                  </button>
+                </div>
+              </>
             )}
             <button type="button" onClick={onClose} className="p-2 text-slate-500 hover:text-slate-800 rounded-lg hover:bg-slate-100">
               <X className="w-5 h-5" />
@@ -1151,6 +1232,21 @@ function PhotoLibraryModal({
 
           {uploading && (
             <div className="mb-4 text-center py-3 text-sm text-slate-600">Uploading photos...</div>
+          )}
+
+          {sorting && (
+            <div className="mb-4 text-center py-3 text-sm text-slate-600 flex items-center justify-center gap-2">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-slate-700" />
+              Claude is grouping your photos…
+            </div>
+          )}
+
+          {sortSelectMode && !selectMode && (
+            <div className="mb-3 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+              {sortSelectedIds.size > 0
+                ? `${sortSelectedIds.size} selected — click Sort with AI when ready`
+                : 'Click photos to select them, or leave none selected to sort everything currently shown'}
+            </div>
           )}
 
           {!selectMode && (
@@ -1202,8 +1298,15 @@ function PhotoLibraryModal({
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-              {filteredPhotos.map((p, i) => (
-                <div key={p.id} className="group relative rounded-lg overflow-hidden border border-slate-200 bg-slate-50 shadow-sm">
+              {filteredPhotos.map((p, i) => {
+                const isSortSelected = sortSelectMode && sortSelectedIds.has(String(p.id));
+                return (
+                <div
+                  key={p.id}
+                  className={`group relative rounded-lg overflow-hidden border bg-slate-50 shadow-sm ${
+                    isSortSelected ? 'border-slate-800 ring-2 ring-slate-800/30' : 'border-slate-200'
+                  }`}
+                >
                   <button
                     type="button"
                     className="w-full aspect-square block"
@@ -1212,9 +1315,19 @@ function PhotoLibraryModal({
                         onSelectPhoto(p);
                         return;
                       }
+                      if (sortSelectMode) {
+                        toggleSortSelect(p.id);
+                        return;
+                      }
                       setViewerIndex(i);
                     }}
-                    title={selectMode ? 'Add to event' : p.name}
+                    title={
+                      selectMode
+                        ? 'Add to event'
+                        : sortSelectMode
+                          ? 'Toggle for AI sort'
+                          : p.name
+                    }
                   >
                     <img src={p.url} alt={p.name} className="w-full h-full object-cover" />
                   </button>
@@ -1246,7 +1359,8 @@ function PhotoLibraryModal({
                     </div>
                   )}
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
         </div>
@@ -1266,6 +1380,25 @@ function PhotoLibraryModal({
           onIndexChange={setViewerIndex}
           onClose={() => setViewerIndex(null)}
           title="Photo Library"
+        />
+      )}
+
+      {sortReview && (
+        <PhotoSortReview
+          photos={sortReview.photos}
+          events={events}
+          suggestions={sortReview.suggestions}
+          timelineId={timelineId}
+          allCategories={allCategories}
+          onClose={() => {
+            setSortReview(null);
+            loadPhotos();
+          }}
+          onApplied={() => {
+            loadPhotos();
+            if (onPhotosUpdated) onPhotosUpdated();
+            if (onEventsUpdated) onEventsUpdated();
+          }}
         />
       )}
     </div>
@@ -2595,6 +2728,7 @@ function EventFull() {
   const [showPhotoLibrary, setShowPhotoLibrary] = useState(false);
   const [photoLibraryMode, setPhotoLibraryMode] = useState('browse');
   const [photosMenuOpen, setPhotosMenuOpen] = useState(false);
+  const [eventsVersion, setEventsVersion] = useState(0);
   const [showAllJournals, setShowAllJournals] = useState(false);
   const [galleryForEvent, setGalleryForEvent] = useState(null);
   const [galleryStartIndex, setGalleryStartIndex] = useState(0);
@@ -2760,7 +2894,7 @@ function EventFull() {
     if (!loading) {
       loadEvents();
     }
-  }, [currentTimelineId, loading, user]);
+  }, [currentTimelineId, loading, user, eventsVersion]);
 
   // Save background to Supabase
   useEffect(() => {
@@ -3181,7 +3315,10 @@ function EventFull() {
             onClose={() => setShowPhotoLibrary(false)}
             allCategories={allCategories}
             initialMode={photoLibraryMode}
+            events={events}
+            timelineId={currentTimelineId}
             onPhotosUpdated={() => {}}
+            onEventsUpdated={() => setEventsVersion((v) => v + 1)}
           />
         )}
 
@@ -3853,7 +3990,10 @@ function EventFull() {
           onClose={() => setShowPhotoLibrary(false)}
           allCategories={allCategories}
           initialMode={photoLibraryMode}
+          events={events}
+          timelineId={currentTimelineId}
           onPhotosUpdated={() => {}}
+          onEventsUpdated={() => setEventsVersion((v) => v + 1)}
         />
       )}
 

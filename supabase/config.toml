@@ -1,0 +1,5 @@
+# Minimal Supabase config for local CLI / function deploy.
+# Link your project with: supabase link --project-ref YOUR_REF
+
+[functions.sort-photos]
+verify_jwt = true

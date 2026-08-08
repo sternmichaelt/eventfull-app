@@ -6,6 +6,7 @@ EventFull is a timeline application that helps you organize and visualize import
 
 - 📅 **Multiple Timelines**: Create and manage multiple timelines
 - 📸 **Photo Management**: Upload and organize photos, tag them to events
+- ✨ **AI Photo Sort**: Bulk-upload photos and let Claude group them into existing or new events (review before applying)
 - 📝 **Journals**: Add journal entries to events
 - 🎤 **Voice Recordings**: Attach voice recordings to events
 - 🎨 **Custom Categories**: Create custom event categories
@@ -98,6 +99,7 @@ See [PRODUCTION_CHECKLIST.md](./PRODUCTION_CHECKLIST.md) for detailed deployment
 ## Documentation
 
 - [Supabase Setup Guide](./SUPABASE_SETUP.md) - Complete database setup instructions
+- [AI Photo Sort](./AI_PHOTO_SORT.md) - Claude vision sorting (Edge Function + API key)
 - [Production Checklist](./PRODUCTION_CHECKLIST.md) - Production readiness and deployment guide
 
 ## Contributing

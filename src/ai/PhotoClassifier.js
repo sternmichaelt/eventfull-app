@@ -1,96 +1,124 @@
-// Pluggable AI Photo Classifier
-// Replace the logic inside classifyPhotos with a real AI API call if desired.
-// Current mock: fuzzy match photo names to event titles to suggest event grouping.
+import { supabase } from '../lib/supabase';
+
+const CLIENT_BATCH_SIZE = 12;
 
 /**
- * @typedef {Object} Photo
- * @property {string} id
- * @property {string} url
- * @property {string} name
- * @property {number} eventId
- * @property {string} category
+ * Ask Claude (via Supabase Edge Function) to group photos into existing or new events.
+ * @param {Array<{ id: string, url: string, name?: string }>} photos
+ * @param {Array<{ id: string|number, title: string, date?: Date|string, category?: string }>} events
+ * @returns {Promise<{ matches: Array, newEvents: Array, unassigned: string[] }>}
  */
+export async function classifyPhotos(photos, events) {
+  if (!supabase) {
+    throw new Error('Supabase is not configured.');
+  }
 
-/**
- * @typedef {Object} Event
- * @property {number} id
- * @property {string} title
- * @property {Date} date
- * @property {string} category
- */
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
 
-/**
- * @typedef {Object} Suggestion
- * @property {string} photoId
- * @property {number} fromEventId
- * @property {number} toEventId
- * @property {string} reason
- */
+  if (!session) {
+    throw new Error('You must be signed in to sort photos with AI.');
+  }
 
-/**
- * classifyPhotos returns suggested reassignments of photos to events.
- * @param {Photo[]} photos flat list of photos with eventId
- * @param {Event[]} events list of events
- * @param {string} prompt free-form instruction from user
- * @returns {{ suggestions: Suggestion[] }}
- */
-export async function classifyPhotos(photos, events, prompt) {
-  // Build simple tokens for event titles
-  const eventTokens = new Map(); // eventId -> Set(tokens)
-  events.forEach(e => {
-    const tokens = tokenize(e.title);
-    eventTokens.set(e.id, tokens);
+  const photoList = (photos || [])
+    .filter((p) => p?.id && p?.url)
+    .map((p) => ({
+      id: String(p.id),
+      url: p.url,
+      name: p.name || '',
+    }));
+
+  const eventList = (events || []).map((e) => ({
+    id: String(e.id),
+    title: e.title || 'Untitled',
+    date: e.date instanceof Date ? e.date.toISOString().slice(0, 10) : e.date || null,
+    category: e.category || null,
+  }));
+
+  if (photoList.length === 0) {
+    return { matches: [], newEvents: [], unassigned: [] };
+  }
+
+  // Edge function also batches; client can send all at once for simpler UX.
+  // For very large sets, chunk invokes to avoid payload limits.
+  if (photoList.length <= CLIENT_BATCH_SIZE * 3) {
+    return invokeSort(photoList, eventList);
+  }
+
+  const merged = { matches: [], newEvents: [], unassigned: [] };
+  for (let i = 0; i < photoList.length; i += CLIENT_BATCH_SIZE * 2) {
+    const chunk = photoList.slice(i, i + CLIENT_BATCH_SIZE * 2);
+    const part = await invokeSort(chunk, eventList);
+    merged.matches.push(...(part.matches || []));
+    merged.newEvents.push(...(part.newEvents || []));
+    merged.unassigned.push(...(part.unassigned || []));
+  }
+  return coalesceResults(merged);
+}
+
+async function invokeSort(photos, events) {
+  const { data, error } = await supabase.functions.invoke('sort-photos', {
+    body: { photos, events },
   });
 
-  const suggestions = [];
+  if (error) {
+    console.error('sort-photos invoke error:', error);
+    const msg =
+      error.message ||
+      data?.error ||
+      'Failed to sort photos. Make sure the sort-photos function is deployed.';
+    throw new Error(msg);
+  }
 
-  for (const p of photos) {
-    // Skip event main images (convention: id ends with '-main')
-    if (String(p.id).includes('-main')) continue;
+  if (data?.error) {
+    throw new Error(data.error);
+  }
 
-    const nameTokens = tokenize(p.name || '');
-    let best = { eventId: p.eventId, score: 0 };
+  return {
+    matches: data?.matches || [],
+    newEvents: data?.newEvents || [],
+    unassigned: data?.unassigned || [],
+  };
+}
 
-    for (const e of events) {
-      const score = jaccard(nameTokens, eventTokens.get(e.id) || new Set());
-      if (score > best.score) best = { eventId: e.id, score };
-    }
+function coalesceResults(result) {
+  const assigned = new Set();
+  const matchesByEvent = new Map();
+  const newEvents = [];
 
-    // Only suggest if best is different and non-trivial
-    if (best.eventId !== p.eventId && best.score >= 0.2) {
-      const toEvent = events.find(e => e.id === best.eventId);
-      const fromEvent = events.find(e => e.id === p.eventId);
-      suggestions.push({
-        photoId: p.id,
-        fromEventId: p.eventId,
-        toEventId: best.eventId,
-        reason: `Matched name to "${toEvent?.title}" (similarity ${(best.score * 100).toFixed(0)}%). Previously in "${fromEvent?.title}".`
+  for (const m of result.matches || []) {
+    const photoIds = (m.photoIds || []).filter((id) => !assigned.has(String(id))).map(String);
+    photoIds.forEach((id) => assigned.add(id));
+    if (!photoIds.length) continue;
+    const key = String(m.eventId);
+    const existing = matchesByEvent.get(key);
+    if (existing) {
+      existing.photoIds.push(...photoIds);
+    } else {
+      matchesByEvent.set(key, {
+        eventId: key,
+        photoIds,
+        reason: m.reason,
       });
     }
   }
 
-  // Simulate async behavior
-  await delay(250);
-  return { suggestions };
-}
+  for (const n of result.newEvents || []) {
+    const photoIds = (n.photoIds || []).filter((id) => !assigned.has(String(id))).map(String);
+    photoIds.forEach((id) => assigned.add(id));
+    if (photoIds.length) {
+      newEvents.push({ ...n, photoIds });
+    }
+  }
 
-function tokenize(text) {
-  return new Set(
-    String(text)
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, ' ')
-      .split(/\s+/)
-      .filter(Boolean)
-  );
-}
+  const unassigned = (result.unassigned || [])
+    .map(String)
+    .filter((id) => !assigned.has(id));
 
-function jaccard(a, b) {
-  if (!a.size || !b.size) return 0;
-  let intersection = 0;
-  for (const t of a) if (b.has(t)) intersection += 1;
-  return intersection / (a.size + b.size - intersection);
+  return {
+    matches: Array.from(matchesByEvent.values()),
+    newEvents,
+    unassigned,
+  };
 }
-
-function delay(ms) {
-  return new Promise(res => setTimeout(res, ms));
-} 
