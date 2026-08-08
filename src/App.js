@@ -3199,6 +3199,80 @@ function EventFull() {
     return 200 + (yearProgress * timelineWidth); // Return pixel position instead of percentage
   };
 
+  // Collision-aware card placement: prefer alternating sides, then stack into lanes
+  const getEventCardLayouts = () => {
+    const cardWidth = 320 * zoom;
+    // Below needs extra clearance so cards don't cover year labels under the line
+    const cardGapAbove = 48 * zoom;
+    const cardGapBelow = 88 * zoom;
+    const horizontalPad = 12 * zoom;
+    const laneStride = 316 * zoom; // room for a photo card + gap between stacked rows
+
+    const occupied = { above: [], below: [] };
+    const byId = {};
+
+    const overlaps = (left, right, lane, side) =>
+      occupied[side].some(
+        (o) =>
+          o.lane === lane &&
+          left < o.right + horizontalPad &&
+          right > o.left - horizontalPad
+      );
+
+    const firstFreeLane = (side, left, right) => {
+      let lane = 0;
+      while (lane < 8 && overlaps(left, right, lane, side)) lane += 1;
+      return lane;
+    };
+
+    // Place chronologically left-to-right so nearby dates resolve first
+    const ordered = filteredEvents
+      .map((event, index) => ({ event, index, x: getEventPosition(event) }))
+      .sort((a, b) => a.x - b.x || a.index - b.index);
+
+    let maxLaneAbove = 0;
+    let maxLaneBelow = 0;
+
+    ordered.forEach(({ event, index, x }, orderIdx) => {
+      const half = cardWidth / 2;
+      const left = x - half;
+      const right = x + half;
+      const preferredSide = orderIdx % 2 === 0 ? 'above' : 'below';
+      const otherSide = preferredSide === 'above' ? 'below' : 'above';
+
+      const preferredLane = firstFreeLane(preferredSide, left, right);
+      const otherLane = firstFreeLane(otherSide, left, right);
+
+      // Prefer closer-to-timeline side; keep alternating when lanes are equal
+      const usePreferred = preferredLane <= otherLane;
+      const side = usePreferred ? preferredSide : otherSide;
+      const lane = usePreferred ? preferredLane : otherLane;
+      const baseGap = side === 'above' ? cardGapAbove : cardGapBelow;
+      const offset = baseGap + lane * laneStride;
+
+      occupied[side].push({ left, right, lane });
+      if (side === 'above') maxLaneAbove = Math.max(maxLaneAbove, lane);
+      else maxLaneBelow = Math.max(maxLaneBelow, lane);
+
+      byId[event.id] = {
+        isAbove: side === 'above',
+        lane,
+        offset,
+        cardWidth
+      };
+    });
+
+    const tallestAbove = cardGapAbove + maxLaneAbove * laneStride + laneStride;
+    const tallestBelow = cardGapBelow + maxLaneBelow * laneStride + laneStride;
+
+    return {
+      byId,
+      contentHeight: Math.max(800, tallestAbove + tallestBelow + 160)
+    };
+  };
+
+  const eventCardLayout = getEventCardLayouts();
+
   const getCategoryIcon = (category, size = 3) => {
     const config = allCategories[category] || allCategories.milestone;
     const IconComponent = config.icon;
@@ -3411,9 +3485,9 @@ function EventFull() {
             className="relative flex items-center"
             style={{ 
               width: `${Math.max(1400, totalYears * 120 * zoom)}px`,
-              height: '800px',
-              paddingTop: '100px', // Reduced from 200px to limit upward scroll
-              paddingBottom: '150px', // Reduced from 300px to limit downward scroll
+              height: `${eventCardLayout.contentHeight}px`,
+              paddingTop: '100px',
+              paddingBottom: '150px',
               paddingLeft: '200px',
               paddingRight: '200px'
             }}
@@ -3456,14 +3530,17 @@ function EventFull() {
             })}
 
             {/* Events */}
-            {filteredEvents.map((event, index) => {
+            {filteredEvents.map((event) => {
               const position = getEventPosition(event);
-              const isAbove = index % 2 === 0;
+              const layout = eventCardLayout.byId[event.id] || {
+                isAbove: true,
+                offset: 48 * zoom,
+                cardWidth: 320 * zoom
+              };
+              const isAbove = layout.isAbove;
               const age = getAgeAtEvent(event.date);
-              
-              // Equal gap above/below timeline; scales with zoom so spacing stays consistent
-              const cardGap = 48 * zoom;
-              const cardWidth = 320 * zoom;
+              const cardGap = layout.offset;
+              const cardWidth = layout.cardWidth;
               const timelineWidth = Math.max(1400, totalYears * 120 * zoom);
               const cardHalfWidth = cardWidth / 2;
 
