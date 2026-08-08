@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS events (
   category TEXT NOT NULL,
   importance INTEGER DEFAULT 5,
   image_url TEXT,
+  primary_photo_id BIGINT, -- FK to photos(id); cover image (single source of truth)
   images JSONB DEFAULT '[]'::jsonb,
   journals JSONB DEFAULT '[]'::jsonb,
   recordings JSONB DEFAULT '[]'::jsonb,
@@ -172,4 +173,17 @@ CREATE INDEX IF NOT EXISTS idx_photos_user ON photos(user_id);
 CREATE INDEX IF NOT EXISTS idx_photos_category ON photos(category);
 CREATE INDEX IF NOT EXISTS idx_photo_events_photo ON photo_events(photo_id);
 CREATE INDEX IF NOT EXISTS idx_photo_events_event ON photo_events(event_id);
+
+-- Cover photo pointer (photos table must exist first)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'events' AND column_name = 'primary_photo_id'
+  ) THEN
+    ALTER TABLE events
+      ADD COLUMN primary_photo_id BIGINT REFERENCES photos(id) ON DELETE SET NULL;
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_events_primary_photo ON events(primary_photo_id);
 

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Plus, ZoomIn, ZoomOut, Calendar, Heart, GraduationCap, Briefcase, Baby, Star, X, Camera, ChevronLeft, ChevronRight, Images, BookOpen, Settings, ChevronDown, LogOut } from 'lucide-react';
-import { fetchEvents, createEvent, updateEvent, deleteEvent, fetchTimelines, createTimeline, updateTimeline, deleteTimeline, shareTimeline, fetchSharedTimelines, fetchUserSettings, updateUserSettings, fetchPhotos, createPhoto, updatePhoto, deletePhoto, tagPhotoToEvent, untagPhotoFromEvent, getPhotosForEvent } from './api/events';
+import { fetchEvents, createEvent, updateEvent, deleteEvent, fetchTimelines, createTimeline, updateTimeline, deleteTimeline, shareTimeline, fetchSharedTimelines, fetchUserSettings, updateUserSettings, fetchPhotos, uploadPhotoFile, updatePhoto, deletePhoto, tagPhotoToEvent, untagPhotoFromEvent, getPhotosForEvent, migrateLegacyPhotosToStorage, ALLOWED_PHOTO_TYPES } from './api/events';
 import { testConnection } from './utils/testSupabaseConnection';
 import { useAuth } from './contexts/AuthContext';
 import AuthModal from './components/AuthModal';
@@ -791,13 +791,15 @@ function EventGallery({ event, startIndex = 0, onClose }) {
         try {
           setLoading(true);
           const photos = await getPhotosForEvent(event.id);
-          setTaggedPhotos(photos);
-          // Include main image if it exists
-          if (event.image) {
-            setTaggedPhotos(prev => [
+          const byUrl = new Set(photos.map(p => p.url).filter(Boolean));
+          // Only prepend legacy main image if it isn't already in the library list
+          if (event.image && !byUrl.has(event.image)) {
+            setTaggedPhotos([
               { id: 'main', url: event.image, name: event.title || 'Image', category: event.category },
-              ...prev
+              ...photos
             ]);
+          } else {
+            setTaggedPhotos(photos);
           }
         } catch (err) {
           console.error('Error loading event photos:', err);
@@ -1088,27 +1090,19 @@ function ManagePhotosModal({ allCategories, onClose, onPhotosUpdated }) {
     
     setUploading(true);
     try {
-      const readers = arr.map((file) => new Promise((resolve, reject) => {
-        const r = new FileReader();
-        r.onload = () => resolve({ url: r.result, name: file.name });
-        r.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
-        r.readAsDataURL(file);
-      }));
-      const items = await Promise.all(readers);
-      
-      // Save each photo to Supabase with error handling per photo
-      // All photos uploaded from Manage Photos are tagged as 'untagged'
-      // so they appear in the Event Photos selector
-      const savePromises = items.map(async (item, index) => {
+      const savePromises = arr.map(async (file) => {
         try {
-          const saved = await createPhoto({ 
-            ...item, 
-            category: 'untagged' // Always 'untagged' so photos appear in Event Photos selector
+          if (!ALLOWED_PHOTO_TYPES.includes(file.type)) {
+            return { success: false, error: 'Only JPEG, PNG, and WebP are supported', name: file.name };
+          }
+          const saved = await uploadPhotoFile(file, {
+            name: file.name,
+            category: 'untagged'
           });
           return { success: true, photo: saved };
         } catch (err) {
-          console.error(`Failed to save photo ${item.name}:`, err);
-          return { success: false, error: err.message, name: item.name };
+          console.error(`Failed to save photo ${file.name}:`, err);
+          return { success: false, error: err.userMessage || err.message, name: file.name };
         }
       });
       
@@ -1193,7 +1187,7 @@ function ManagePhotosModal({ allCategories, onClose, onPhotosUpdated }) {
           >
             <div className="text-gray-600">Drag & drop photos here, or click to select</div>
             <div className="text-xs text-gray-400 mt-1">JPG, PNG, WebP. Many files supported.</div>
-            <input ref={inputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
+            <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
           </div>
 
           {uploading && (
@@ -1447,6 +1441,7 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
     category: initialEvent?.category || 'milestone',
     importance: initialEvent?.importance ?? 5,
     image: initialEvent?.image || null,
+    primary_photo_id: initialEvent?.primary_photo_id || null,
     images: initialEvent?.images || [],
     journals: initialEvent?.journals || [],
     recordings: initialEvent?.recordings || []
@@ -1457,6 +1452,7 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
   const [showPhotoSelector, setShowPhotoSelector] = useState(false);
   const [saveError, setSaveError] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingPhotos, setIsUploadingPhotos] = useState(false);
   const fileInputRef = useRef(null);
   const galleryInputRef = useRef(null);
 
@@ -1634,39 +1630,76 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
     setEditingJournalId(newId);
   };
 
-  const handleImageUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setImagePreview(e.target.result);
-        setFormData({ ...formData, image: e.target.result });
-      };
-      reader.readAsDataURL(file);
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!ALLOWED_PHOTO_TYPES.includes(file.type)) {
+      alert('Only JPEG, PNG, and WebP images are supported.');
+      return;
+    }
+    setIsUploadingPhotos(true);
+    try {
+      const saved = await uploadPhotoFile(file, {
+        name: file.name,
+        category: formData.category
+      });
+      setTaggedPhotos(prev => (prev.find(p => p.id === saved.id) ? prev : [...prev, saved]));
+      setFormData(prev => ({
+        ...prev,
+        image: saved.url,
+        primary_photo_id: saved.id
+      }));
+      setImagePreview(saved.url);
+    } catch (err) {
+      console.error('Error uploading main photo:', err);
+      alert(err.userMessage || err.message || 'Failed to upload photo.');
+    } finally {
+      setIsUploadingPhotos(false);
+      e.target.value = '';
     }
   };
 
   const handleGalleryUpload = async (e) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
+    setIsUploadingPhotos(true);
     try {
-      const readers = files.map((file) => new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (ev) => resolve({ url: ev.target.result, name: file.name });
-        reader.readAsDataURL(file);
-      }));
-      const items = await Promise.all(readers);
-      
-      // Save photos to Supabase and tag them
-      const savedPhotos = await Promise.all(
-        items.map(item => createPhoto({ ...item, category: formData.category }))
-      );
-      
-      // Add to tagged photos (will be tagged when event is saved)
-      setTaggedPhotos(prev => [...prev, ...savedPhotos]);
+      const savedPhotos = [];
+      for (const file of files) {
+        if (!ALLOWED_PHOTO_TYPES.includes(file.type)) {
+          console.warn(`Skipping unsupported file type: ${file.name}`);
+          continue;
+        }
+        const saved = await uploadPhotoFile(file, {
+          name: file.name,
+          category: formData.category
+        });
+        savedPhotos.push(saved);
+      }
+      if (savedPhotos.length === 0) {
+        alert('No supported photos uploaded. Use JPEG, PNG, or WebP.');
+        return;
+      }
+      setTaggedPhotos(prev => {
+        const existing = new Set(prev.map(p => p.id));
+        return [...prev, ...savedPhotos.filter(p => !existing.has(p.id))];
+      });
+      // If no cover yet, use the first new upload
+      setFormData(prev => {
+        if (prev.primary_photo_id || prev.image) return prev;
+        return {
+          ...prev,
+          image: savedPhotos[0].url,
+          primary_photo_id: savedPhotos[0].id
+        };
+      });
+      setImagePreview(prev => prev || savedPhotos[0].url);
     } catch (err) {
       console.error('Error uploading photos:', err);
-      alert('Failed to upload photos. Please try again.');
+      alert(err.userMessage || err.message || 'Failed to upload photos. Please try again.');
+    } finally {
+      setIsUploadingPhotos(false);
+      e.target.value = '';
     }
   };
 
@@ -1681,6 +1714,14 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
 
   const handleUntagPhoto = (photoId) => {
     setTaggedPhotos(prev => prev.filter(p => p.id !== photoId));
+    setFormData(prev => {
+      if (String(prev.primary_photo_id) !== String(photoId)) return prev;
+      return { ...prev, primary_photo_id: null, image: null };
+    });
+    setImagePreview(prev => {
+      const removed = taggedPhotos.find(p => p.id === photoId);
+      return removed && prev === removed.url ? null : prev;
+    });
   };
 
   // eslint-disable-next-line no-unused-vars
@@ -1723,32 +1764,46 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
         const savedEvent = await onSave(normalized);
         const eventId = savedEvent?.id || (isEdit ? initialEvent.id : null);
         
-        // Then tag photos to the event
+        // Then tag photos to the event and ensure cover is linked
         if (eventId) {
           try {
-            // Get current tagged photos for this event
+            // Ensure primary photo is in the tagged set
+            let photosToTag = [...taggedPhotos];
+            if (
+              formData.primary_photo_id &&
+              !photosToTag.find(p => String(p.id) === String(formData.primary_photo_id))
+            ) {
+              // Primary should already be in taggedPhotos after Storage upload; ignore if missing
+            }
+
             const currentTagged = isEdit ? await getPhotosForEvent(eventId) : [];
             const currentTaggedIds = new Set(currentTagged.map(p => p.id));
-            const newTaggedIds = new Set(taggedPhotos.map(p => p.id));
+            const newTaggedIds = new Set(photosToTag.map(p => p.id));
             
-            // Tag new photos
-            for (const photo of taggedPhotos) {
+            for (const photo of photosToTag) {
               if (!currentTaggedIds.has(photo.id)) {
                 await tagPhotoToEvent(photo.id, eventId);
-                // Update photo category to match event category
                 await updatePhoto(photo.id, { category: formData.category });
               }
             }
             
-            // Untag removed photos
             for (const photo of currentTagged) {
               if (!newTaggedIds.has(photo.id)) {
                 await untagPhotoFromEvent(photo.id, eventId);
               }
             }
+
+            // Persist primary pointer + short image URL (never base64)
+            if (formData.primary_photo_id || formData.image) {
+              const primaryUrl = photosToTag.find(p => String(p.id) === String(formData.primary_photo_id))?.url
+                || formData.image;
+              await updateEvent(eventId, {
+                primary_photo_id: formData.primary_photo_id || null,
+                image_url: primaryUrl && !String(primaryUrl).startsWith('data:') ? primaryUrl : null
+              });
+            }
           } catch (err) {
             console.error('Error tagging photos:', err);
-            // Don't block the save, just log the error
           }
         }
         
@@ -1855,7 +1910,10 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
                         </div>
                       )}
                     </div>
-                    <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                    <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleImageUpload} />
+                    {isUploadingPhotos && (
+                      <p className="text-xs text-gray-500 mt-1">Uploading photo...</p>
+                    )}
                   </div>
 
                   {/* Tagged Photos */}
@@ -1867,12 +1925,14 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
                         <button type="button" onClick={() => galleryInputRef.current?.click()} className="text-sm text-blue-600 hover:underline">Upload New</button>
                       </div>
                     </div>
-                    <input ref={galleryInputRef} type="file" accept="image/*" multiple onChange={handleGalleryUpload} className="hidden" />
+                    <input ref={galleryInputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={handleGalleryUpload} className="hidden" />
                     
                     {taggedPhotos.length > 0 && (
                       <div className="grid grid-cols-2 gap-2">
                         {taggedPhotos.map((photo) => {
-                          const isPrimary = formData.image === photo.url;
+                          const isPrimary = formData.primary_photo_id
+                            ? String(formData.primary_photo_id) === String(photo.id)
+                            : formData.image === photo.url;
                           return (
                             <div key={photo.id} className="relative group">
                               <img src={photo.url} alt={photo.name} className={`w-full h-20 object-cover rounded ${isPrimary ? 'ring-2 ring-blue-500' : ''}`} />
@@ -1881,7 +1941,11 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      setFormData(prev => ({ ...prev, image: photo.url }));
+                                      setFormData(prev => ({
+                                        ...prev,
+                                        image: photo.url,
+                                        primary_photo_id: photo.id
+                                      }));
                                       setImagePreview(photo.url);
                                     }}
                                     className="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
@@ -2597,27 +2661,40 @@ function EventFull() {
       if (!currentTimelineId) return;
       
       try {
+        // Move legacy base64 images into Storage (no-op once already migrated)
+        try {
+          await migrateLegacyPhotosToStorage();
+        } catch (migErr) {
+          console.warn('Photo storage migration skipped/failed:', migErr);
+        }
+
         const loadedEvents = await fetchEvents(currentTimelineId);
         
-        // Load tagged photos for each event and ensure primary image is set
         const eventsWithPhotos = await Promise.all(
           loadedEvents.map(async (event) => {
             try {
               const photos = await getPhotosForEvent(event.id);
-              // If event has image_url but no image property, use image_url
-              const primaryImage = event.image || event.image_url || null;
+              const primaryFromLibrary = event.primary_photo_id
+                ? photos.find(p => String(p.id) === String(event.primary_photo_id))
+                : null;
+              const primaryImage =
+                primaryFromLibrary?.url ||
+                event.image ||
+                event.image_url ||
+                photos[0]?.url ||
+                null;
               return { 
                 ...event, 
                 taggedPhotos: photos,
-                image: primaryImage // Ensure image property is set for display
+                image: primaryImage,
+                primary_photo_id: event.primary_photo_id || primaryFromLibrary?.id || null
               };
             } catch (err) {
               console.error(`Error loading photos for event ${event.id}:`, err);
-              const primaryImage = event.image || event.image_url || null;
               return { 
                 ...event, 
                 taggedPhotos: [],
-                image: primaryImage
+                image: event.image || event.image_url || null
               };
             }
           })
@@ -2798,9 +2875,15 @@ function EventFull() {
 
   const addEvent = async (newEvent) => {
     try {
+      const primaryUrl = newEvent.image && !String(newEvent.image).startsWith('data:')
+        ? newEvent.image
+        : null;
       const eventToSave = {
         ...newEvent,
-        timeline_id: currentTimelineId
+        timeline_id: currentTimelineId,
+        primary_photo_id: newEvent.primary_photo_id || null,
+        image: primaryUrl,
+        image_url: primaryUrl
       };
       const createdEvent = await createEvent(eventToSave);
       setEvents([...events, createdEvent]);
@@ -2809,7 +2892,7 @@ function EventFull() {
       setTimelines(prev => prev.map(t => 
         t.id === currentTimelineId ? { ...t, event_count: (t.event_count || 0) + 1 } : t
       ));
-      return createdEvent; // Return event so EventForm can get the ID
+      return createdEvent;
     } catch (err) {
       console.error('Error adding event:', err);
       alert('Failed to add event. Please try again.');
@@ -3146,22 +3229,26 @@ function EventFull() {
 
   const saveEditedEvent = async (updatedEvent) => {
     try {
+      const primaryUrl = updatedEvent.image && !String(updatedEvent.image).startsWith('data:')
+        ? updatedEvent.image
+        : null;
       const savedEvent = await updateEvent(updatedEvent.id, {
         title: updatedEvent.title,
         description: updatedEvent.description,
         date: updatedEvent.date instanceof Date ? updatedEvent.date : new Date(updatedEvent.date),
         category: updatedEvent.category,
         importance: updatedEvent.importance,
-        image_url: updatedEvent.image,
+        primary_photo_id: updatedEvent.primary_photo_id || null,
+        image_url: primaryUrl,
         images: updatedEvent.images || [],
         journals: updatedEvent.journals || [],
         recordings: updatedEvent.recordings || []
       });
-      setEvents(events.map(e => (e.id === updatedEvent.id ? savedEvent : e)));
-      return savedEvent; // Return event so EventForm can get the ID
+      setEvents(events.map(e => (e.id === updatedEvent.id ? { ...e, ...savedEvent, taggedPhotos: e.taggedPhotos } : e)));
+      return savedEvent;
     } catch (err) {
       console.error('Error updating event:', err);
-      throw err; // Let EventForm handle the error display
+      throw err;
     }
   };
 

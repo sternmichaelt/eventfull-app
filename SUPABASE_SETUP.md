@@ -103,14 +103,17 @@ REACT_APP_SUPABASE_ANON_KEY=your-anon-key-here
 3. **photos**: General photo repository
    - `id` (BIGSERIAL)
    - `user_id` (UUID)
-   - `url` (TEXT) - base64 encoded image
+   - `url` (TEXT) - public Supabase Storage URL (legacy rows may still be base64 until migrated)
    - `name` (TEXT)
    - `category` (TEXT, default: 'untagged')
+   - Files live in Storage bucket **`photos`** — run `supabase-photos-storage.sql`
 
 4. **photo_events**: Junction table for photo-event tagging
    - `photo_id` (BIGINT)
    - `event_id` (BIGINT)
    - Unique constraint on (photo_id, event_id)
+
+Events also have `primary_photo_id` pointing at the cover photo in `photos` (single source of truth).
 
 5. **user_settings**: User preferences
    - `user_id` (UUID, unique)
@@ -164,7 +167,7 @@ CREATE POLICY "Users can view own events" ON events
 2. ✅ Environment variables configured
 3. ⚠️ **Implement authentication** (replace guest user system)
 4. ⚠️ **Update RLS policies** for production security
-5. ⚠️ **Consider Supabase Storage** for photos (instead of base64 in database)
+5. ✅ **Supabase Storage for photos** — run `supabase-photos-storage.sql` (bucket `photos` + `primary_photo_id`)
 
 ## Support
 

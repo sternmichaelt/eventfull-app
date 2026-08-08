@@ -1,5 +1,8 @@
 import { supabase } from '../lib/supabase';
 
+export const PHOTOS_BUCKET = 'photos';
+export const ALLOWED_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
 // Check if Supabase is available
 const checkSupabase = () => {
   if (!supabase) {
@@ -27,31 +30,125 @@ const getUserId = async () => {
   return session.user.id;
 };
 
+const isDataUrl = (url) => typeof url === 'string' && url.startsWith('data:');
+const isHttpUrl = (url) => typeof url === 'string' && /^https?:\/\//i.test(url);
+
+const sanitizeFileName = (name) => {
+  const base = (name || 'photo').replace(/[^a-zA-Z0-9._-]/g, '_');
+  return base.slice(0, 120) || 'photo.jpg';
+};
+
+const extensionForMime = (mime) => {
+  if (mime === 'image/png') return 'png';
+  if (mime === 'image/webp') return 'webp';
+  return 'jpg';
+};
+
+const storagePathFromPublicUrl = (url) => {
+  if (!url || !isHttpUrl(url)) return null;
+  const marker = `/storage/v1/object/public/${PHOTOS_BUCKET}/`;
+  const idx = url.indexOf(marker);
+  if (idx === -1) return null;
+  return decodeURIComponent(url.slice(idx + marker.length));
+};
+
+const mapEventRow = (e) => {
+  const primaryPhoto = e.primary_photo || null;
+  const primaryPhotoId = e.primary_photo_id != null ? e.primary_photo_id.toString() : null;
+  const image =
+    primaryPhoto?.url ||
+    e.image_url ||
+    e.image ||
+    null;
+
+  return {
+    ...e,
+    id: e.id.toString(),
+    date: new Date(e.date),
+    primary_photo_id: primaryPhotoId,
+    primary_photo: primaryPhoto
+      ? { ...primaryPhoto, id: primaryPhoto.id.toString() }
+      : null,
+    image,
+    images: e.images || [],
+    journals: e.journals || [],
+    recordings: e.recordings || []
+  };
+};
+
+const dataUrlToBlob = async (dataUrl) => {
+  const res = await fetch(dataUrl);
+  return res.blob();
+};
+
+const uploadBlobToStorage = async (blob, fileName, userId) => {
+  const mime = blob.type || 'image/jpeg';
+  if (!ALLOWED_PHOTO_TYPES.includes(mime)) {
+    const err = new Error('Only JPEG, PNG, and WebP images are supported.');
+    err.userMessage = err.message;
+    throw err;
+  }
+
+  const safeName = sanitizeFileName(fileName);
+  const hasExt = /\.[a-z0-9]+$/i.test(safeName);
+  const finalName = hasExt ? safeName : `${safeName}.${extensionForMime(mime)}`;
+  const path = `${userId}/${Date.now()}-${finalName}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from(PHOTOS_BUCKET)
+    .upload(path, blob, {
+      contentType: mime,
+      upsert: false,
+      cacheControl: '3600'
+    });
+
+  if (uploadError) {
+    console.error('Storage upload error:', uploadError);
+    const err = new Error(uploadError.message || 'Failed to upload photo to storage');
+    err.userMessage = 'Could not upload photo. Make sure the photos Storage bucket exists and you are signed in.';
+    throw err;
+  }
+
+  const { data } = supabase.storage.from(PHOTOS_BUCKET).getPublicUrl(path);
+  return data.publicUrl;
+};
+
 // Events API
 export async function fetchEvents(timelineId) {
   checkSupabase();
   const userId = await getUserId();
   const { data, error } = await supabase
     .from('events')
-    .select('*')
+    .select(`
+      *,
+      primary_photo:photos!primary_photo_id (
+        id,
+        url,
+        name,
+        category
+      )
+    `)
     .eq('timeline_id', timelineId)
-    .eq('user_id', userId) // Filter by user
+    .eq('user_id', userId)
     .order('date', { ascending: true });
   
   if (error) {
-    console.error('Error fetching events:', error);
-    return [];
+    // Fallback if FK join name differs on older schemas
+    console.warn('fetchEvents with primary_photo join failed, retrying without join:', error.message);
+    const retry = await supabase
+      .from('events')
+      .select('*')
+      .eq('timeline_id', timelineId)
+      .eq('user_id', userId)
+      .order('date', { ascending: true });
+    if (retry.error) {
+      console.error('Error fetching events:', retry.error);
+      return [];
+    }
+    return (retry.data || []).map(mapEventRow);
   }
   
-  return data.map(e => ({
-    ...e,
-    id: e.id.toString(), // Convert numeric ID to string for consistency
-    date: new Date(e.date),
-    image: e.image_url || e.image || null, // Map image_url to image for consistency
-    images: e.images || [],
-    journals: e.journals || [],
-    recordings: e.recordings || []
-  }));
+  return (data || []).map(mapEventRow);
 }
 
 export async function createEvent(event) {
@@ -60,8 +157,18 @@ export async function createEvent(event) {
   
   console.log('Creating event with userId:', userId, 'type:', typeof userId);
   
-  // Map image property to image_url for database
-  const imageUrl = event.image || event.image_url || null;
+  const primaryPhotoId = event.primary_photo_id
+    ? parseInt(event.primary_photo_id, 10)
+    : null;
+  // Prefer short Storage URL; never persist huge base64 on new writes when we have a photo id
+  let imageUrl = event.image || event.image_url || null;
+  if (isDataUrl(imageUrl) && primaryPhotoId) {
+    imageUrl = null;
+  }
+  if (isDataUrl(imageUrl) && !primaryPhotoId) {
+    // Last resort: keep until migration; prefer migrating via uploadPhotoFile in UI
+    console.warn('createEvent received base64 image_url; prefer Storage uploads');
+  }
   
   const { data, error } = await supabase
     .from('events')
@@ -73,12 +180,21 @@ export async function createEvent(event) {
       date: event.date.toISOString(),
       category: event.category,
       importance: event.importance || 5,
-      image_url: imageUrl, // Store primary image in image_url column
+      image_url: isDataUrl(imageUrl) ? null : imageUrl,
+      primary_photo_id: primaryPhotoId,
       images: event.images || [],
       journals: event.journals || [],
       recordings: event.recordings || []
     })
-    .select()
+    .select(`
+      *,
+      primary_photo:photos!primary_photo_id (
+        id,
+        url,
+        name,
+        category
+      )
+    `)
     .single();
   
   if (error) {
@@ -91,11 +207,10 @@ export async function createEvent(event) {
       userIdType: typeof userId
     });
     
-    // Provide helpful error message for common issues
     if (error.code === '23503' || error.message?.includes('foreign key') || error.message?.includes('user_id')) {
       error.userMessage = 'Database schema error: Please ensure user_id columns are UUID type and linked to auth.users';
     } else if (error.code === '42704' || error.message?.includes('column') || error.message?.includes('does not exist')) {
-      error.userMessage = 'Database table/column error: Please run the setup script (supabase-setup.sql) in Supabase SQL Editor';
+      error.userMessage = 'Database table/column error: Please run supabase-photos-storage.sql in Supabase SQL Editor';
     } else if (error.message?.includes('invalid input syntax for type uuid')) {
       error.userMessage = 'Authentication required: Please sign in to use this feature';
     }
@@ -103,26 +218,25 @@ export async function createEvent(event) {
     throw error;
   }
   
-  return {
-    ...data,
-    id: data.id.toString(), // Convert numeric ID to string for consistency
-    date: new Date(data.date),
-    image: data.image_url || data.image || null, // Map image_url to image for consistency
-    images: data.images || [],
-    journals: data.journals || [],
-    recordings: data.recordings || []
-  };
+  return mapEventRow(data);
 }
 
 export async function updateEvent(eventId, updates) {
   checkSupabase();
   
-  // Map image property to image_url for database
   const dbUpdates = { ...updates };
   if (dbUpdates.image !== undefined) {
-    dbUpdates.image_url = dbUpdates.image;
-    delete dbUpdates.image; // Remove image property, use image_url instead
+    dbUpdates.image_url = isDataUrl(dbUpdates.image) ? null : dbUpdates.image;
+    delete dbUpdates.image;
   }
+  if (dbUpdates.image_url !== undefined && isDataUrl(dbUpdates.image_url)) {
+    dbUpdates.image_url = null;
+  }
+  if (dbUpdates.primary_photo_id !== undefined && dbUpdates.primary_photo_id !== null) {
+    dbUpdates.primary_photo_id = parseInt(dbUpdates.primary_photo_id, 10);
+  }
+  delete dbUpdates.primary_photo;
+  delete dbUpdates.taggedPhotos;
   
   const { data, error } = await supabase
     .from('events')
@@ -131,8 +245,16 @@ export async function updateEvent(eventId, updates) {
       date: dbUpdates.date ? dbUpdates.date.toISOString() : undefined,
       updated_at: new Date().toISOString()
     })
-    .eq('id', parseInt(eventId)) // Convert string ID to number for Supabase
-    .select()
+    .eq('id', parseInt(eventId))
+    .select(`
+      *,
+      primary_photo:photos!primary_photo_id (
+        id,
+        url,
+        name,
+        category
+      )
+    `)
     .single();
   
   if (error) {
@@ -140,15 +262,7 @@ export async function updateEvent(eventId, updates) {
     throw error;
   }
   
-  return {
-    ...data,
-    id: data.id.toString(), // Convert numeric ID to string for consistency
-    date: new Date(data.date),
-    image: data.image_url || data.image || null, // Map image_url to image for consistency
-    images: data.images || [],
-    journals: data.journals || [],
-    recordings: data.recordings || []
-  };
+  return mapEventRow(data);
 }
 
 export async function deleteEvent(eventId) {
@@ -156,7 +270,7 @@ export async function deleteEvent(eventId) {
   const { error } = await supabase
     .from('events')
     .delete()
-    .eq('id', parseInt(eventId)); // Convert string ID to number for Supabase
+    .eq('id', parseInt(eventId));
   
   if (error) {
     console.error('Error deleting event:', error);
@@ -320,17 +434,12 @@ export async function fetchPhotos(category = null) {
   checkSupabase();
   const userId = await getUserId();
   
-  console.log('fetchPhotos called:', { userId, userIdType: typeof userId, category });
-  
   let query = supabase
     .from('photos')
     .select('*')
-    .eq('user_id', userId) // Filter by current user
+    .eq('user_id', userId)
     .order('created_at', { ascending: false });
   
-  // If category is specified, filter by it
-  // If category is null/undefined, return ALL photos (including 'untagged')
-  // This ensures photos uploaded from Manage Photos are available in Event Photos selector
   if (category) {
     query = query.eq('category', category);
   }
@@ -338,19 +447,9 @@ export async function fetchPhotos(category = null) {
   const { data, error } = await query;
   
   if (error) {
-    console.error('Error fetching photos:', {
-      error,
-      message: error.message,
-      code: error.code,
-      details: error.details,
-      hint: error.hint,
-      userId,
-      userIdType: typeof userId
-    });
+    console.error('Error fetching photos:', error);
     return [];
   }
-  
-  console.log('fetchPhotos result:', { count: data?.length || 0, photos: data });
   
   return (data || []).map(p => ({
     ...p,
@@ -358,29 +457,28 @@ export async function fetchPhotos(category = null) {
   }));
 }
 
+/** @deprecated Prefer uploadPhotoFile for new uploads (stores real files in Storage). */
 export async function createPhoto(photo) {
   checkSupabase();
   const userId = await getUserId();
   
-  console.log('createPhoto called:', { 
-    userId, 
-    userIdType: typeof userId,
-    photoName: photo.name,
-    category: photo.category 
-  });
-  
-  // Validate required fields
   if (!photo.url || !photo.name) {
     throw new Error('Photo URL and name are required');
   }
+
+  // If caller still passes base64, migrate into Storage first
+  let url = photo.url;
+  if (isDataUrl(url)) {
+    const blob = await dataUrlToBlob(url);
+    url = await uploadBlobToStorage(blob, photo.name, userId);
+  }
   
   try {
-    // Ensure userId is UUID format (should already be from getUserId)
     const { data, error } = await supabase
       .from('photos')
       .insert({
-        user_id: userId, // This should be a UUID string from authenticated user
-        url: photo.url,
+        user_id: userId,
+        url,
         name: photo.name,
         category: photo.category || 'untagged'
       })
@@ -389,50 +487,72 @@ export async function createPhoto(photo) {
     
     if (error) {
       console.error('Error creating photo:', error);
-      console.error('Photo data:', { 
-        userId, 
-        userIdType: typeof userId,
-        userIdValue: userId,
-        name: photo.name, 
-        category: photo.category,
-        errorCode: error.code,
-        errorMessage: error.message,
-        errorDetails: error.details,
-        errorHint: error.hint
-      });
-      
-      // Provide helpful error message
       if (error.code === '23502' || error.message?.includes('null value')) {
         error.userMessage = 'User ID is missing. Please sign in to upload photos.';
-      } else if (error.code === '23503' || error.message?.includes('foreign key')) {
-        error.userMessage = 'Database schema error: Please run fix-photos-uuid.sql in Supabase SQL Editor';
-      } else if (error.message?.includes('invalid input syntax for type uuid')) {
-        error.userMessage = 'Database schema mismatch: Photos table expects UUID but received different type. Please run fix-photos-uuid.sql';
-      } else if (error.message?.includes('invalid input syntax for type text')) {
-        error.userMessage = 'Database schema mismatch: Photos table expects TEXT but received UUID. Please check database schema.';
+      } else if (error.message?.includes('column') || error.message?.includes('does not exist')) {
+        error.userMessage = 'Database schema error: Please run supabase-photos-storage.sql in Supabase.';
       }
-      
       throw error;
     }
-    
-    console.log('Photo created successfully:', { id: data.id, name: data.name });
     
     return {
       ...data,
       id: data.id.toString()
     };
   } catch (err) {
-    console.error('createPhoto error details:', {
-      message: err.message,
-      code: err.code,
-      details: err.details,
-      hint: err.hint,
-      userId,
-      userIdType: typeof userId,
-      photoName: photo.name
-    });
+    console.error('createPhoto error details:', err);
     throw err;
   }
+}
+
+/**
+ * Upload a real image file to Supabase Storage and create a photos row.
+ * Single source of truth for new pictures.
+ */
+export async function uploadPhotoFile(file, { name, category } = {}) {
+  checkSupabase();
+  const userId = await getUserId();
+
+  if (!file) {
+    throw new Error('No file provided');
+  }
+
+  const mime = file.type || '';
+  if (!ALLOWED_PHOTO_TYPES.includes(mime)) {
+    const err = new Error('Only JPEG, PNG, and WebP images are supported.');
+    err.userMessage = err.message;
+    throw err;
+  }
+
+  const fileName = name || file.name || `photo.${extensionForMime(mime)}`;
+  const url = await uploadBlobToStorage(file, fileName, userId);
+
+  const { data, error } = await supabase
+    .from('photos')
+    .insert({
+      user_id: userId,
+      url,
+      name: fileName,
+      category: category || 'untagged'
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error creating photo after storage upload:', error);
+    // Best-effort cleanup of orphaned storage object
+    const path = storagePathFromPublicUrl(url);
+    if (path) {
+      await supabase.storage.from(PHOTOS_BUCKET).remove([path]);
+    }
+    error.userMessage = error.userMessage || 'Failed to save photo record after upload.';
+    throw error;
+  }
+
+  return {
+    ...data,
+    id: data.id.toString()
+  };
 }
 
 export async function updatePhoto(photoId, updates) {
@@ -460,6 +580,17 @@ export async function updatePhoto(photoId, updates) {
 
 export async function deletePhoto(photoId) {
   checkSupabase();
+
+  const { data: existing, error: fetchError } = await supabase
+    .from('photos')
+    .select('id, url')
+    .eq('id', parseInt(photoId))
+    .maybeSingle();
+
+  if (fetchError) {
+    console.error('Error loading photo before delete:', fetchError);
+  }
+
   const { error } = await supabase
     .from('photos')
     .delete()
@@ -469,6 +600,150 @@ export async function deletePhoto(photoId) {
     console.error('Error deleting photo:', error);
     throw error;
   }
+
+  const path = storagePathFromPublicUrl(existing?.url);
+  if (path) {
+    const { error: storageError } = await supabase.storage.from(PHOTOS_BUCKET).remove([path]);
+    if (storageError) {
+      console.warn('Photo DB row deleted but storage file remove failed:', storageError.message);
+    }
+  }
+}
+
+/**
+ * Move legacy base64 photos/covers into Storage and set primary_photo_id.
+ * Safe to call multiple times; skips rows that already use http(s) URLs.
+ */
+export async function migrateLegacyPhotosToStorage() {
+  checkSupabase();
+  const userId = await getUserId();
+  let migratedPhotos = 0;
+  let migratedCovers = 0;
+
+  const { data: photos, error: photosError } = await supabase
+    .from('photos')
+    .select('id, url, name')
+    .eq('user_id', userId);
+
+  if (photosError) {
+    console.error('migrateLegacyPhotosToStorage photos fetch error:', photosError);
+  } else {
+    for (const photo of photos || []) {
+      if (!isDataUrl(photo.url)) continue;
+      try {
+        const blob = await dataUrlToBlob(photo.url);
+        const url = await uploadBlobToStorage(blob, photo.name || `photo-${photo.id}.jpg`, userId);
+        await supabase
+          .from('photos')
+          .update({ url, updated_at: new Date().toISOString() })
+          .eq('id', photo.id);
+        migratedPhotos += 1;
+      } catch (err) {
+        console.error(`Failed migrating photo ${photo.id}:`, err);
+      }
+    }
+  }
+
+  const { data: events, error: eventsError } = await supabase
+    .from('events')
+    .select('id, title, category, image_url, primary_photo_id')
+    .eq('user_id', userId);
+
+  if (eventsError) {
+    console.error('migrateLegacyPhotosToStorage events fetch error:', eventsError);
+  } else {
+    for (const event of events || []) {
+      try {
+        if (event.primary_photo_id && !isDataUrl(event.image_url)) {
+          // Already has a primary; clear leftover base64 cache if any
+          if (isDataUrl(event.image_url)) {
+            await supabase
+              .from('events')
+              .update({ image_url: null, updated_at: new Date().toISOString() })
+              .eq('id', event.id);
+          }
+          continue;
+        }
+
+        if (isDataUrl(event.image_url)) {
+          const blob = await dataUrlToBlob(event.image_url);
+          const fileName = `${event.title || 'cover'}-${event.id}.jpg`;
+          const url = await uploadBlobToStorage(blob, fileName, userId);
+          const { data: created, error: createErr } = await supabase
+            .from('photos')
+            .insert({
+              user_id: userId,
+              url,
+              name: fileName,
+              category: event.category || 'untagged'
+            })
+            .select()
+            .single();
+          if (createErr) throw createErr;
+
+          await supabase.from('photo_events').insert(
+            { photo_id: created.id, event_id: event.id }
+          );
+
+          await supabase
+            .from('events')
+            .update({
+              primary_photo_id: created.id,
+              image_url: url,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', event.id);
+
+          migratedCovers += 1;
+          continue;
+        }
+
+        // HTTP cover URL but no primary_photo_id: link existing photo by URL or create stub row
+        if (!event.primary_photo_id && isHttpUrl(event.image_url)) {
+          const { data: match } = await supabase
+            .from('photos')
+            .select('id, url')
+            .eq('user_id', userId)
+            .eq('url', event.image_url)
+            .maybeSingle();
+
+          let photoId = match?.id;
+          if (!photoId) {
+            const { data: created, error: createErr } = await supabase
+              .from('photos')
+              .insert({
+                user_id: userId,
+                url: event.image_url,
+                name: `${event.title || 'cover'}-${event.id}`,
+                category: event.category || 'untagged'
+              })
+              .select()
+              .single();
+            if (createErr) throw createErr;
+            photoId = created.id;
+          }
+
+          await supabase.from('photo_events').insert(
+            { photo_id: photoId, event_id: event.id }
+          );
+
+          await supabase
+            .from('events')
+            .update({
+              primary_photo_id: photoId,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', event.id);
+
+          migratedCovers += 1;
+        }
+      } catch (err) {
+        console.error(`Failed migrating cover for event ${event.id}:`, err);
+      }
+    }
+  }
+
+  return { migratedPhotos, migratedCovers };
 }
 
 // Photo-Event tagging API
@@ -484,6 +759,10 @@ export async function tagPhotoToEvent(photoId, eventId) {
     .single();
   
   if (error) {
+    // Ignore duplicate tag
+    if (error.code === '23505') {
+      return null;
+    }
     console.error('Error tagging photo to event:', error);
     throw error;
   }
@@ -532,7 +811,7 @@ export async function getPhotosForEvent(eventId) {
   }
   
   return data
-    .filter(pe => pe.photos) // Filter out any null photos
+    .filter(pe => pe.photos)
     .map(pe => ({
       ...pe.photos,
       id: pe.photos.id.toString()
@@ -567,7 +846,7 @@ export async function getEventsForPhoto(photoId) {
   }
   
   return data
-    .filter(pe => pe.events) // Filter out any null events
+    .filter(pe => pe.events)
     .map(pe => ({
       ...pe.events,
       id: pe.events.id.toString(),
