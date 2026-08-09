@@ -4,7 +4,7 @@ const CLIENT_BATCH_SIZE = 12;
 
 /**
  * Ask Claude (via Supabase Edge Function) to group photos into existing or new events.
- * @param {Array<{ id: string, url: string, name?: string }>} photos
+ * @param {Array<{ id: string, url: string, name?: string, taken_at?: string|null }>} photos
  * @param {Array<{ id: string|number, title: string, date?: Date|string, category?: string }>} events
  * @returns {Promise<{ matches: Array, newEvents: Array, unassigned: string[] }>}
  */
@@ -27,6 +27,7 @@ export async function classifyPhotos(photos, events) {
       id: String(p.id),
       url: p.url,
       name: p.name || '',
+      taken_at: p.taken_at || null,
     }));
 
   const eventList = (events || []).map((e) => ({

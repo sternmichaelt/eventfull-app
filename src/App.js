@@ -988,7 +988,8 @@ function PhotoLibraryModal({
   initialMode = 'browse',
   selectMode = false,
   excludeIds = [],
-  onSelectPhoto = null
+  onSelectPhoto = null,
+  onSelectPhotos = null
 }) {
   const [mode, setMode] = useState(selectMode ? 'browse' : initialMode);
   const [photos, setPhotos] = useState([]);
@@ -997,10 +998,12 @@ function PhotoLibraryModal({
   const [viewerIndex, setViewerIndex] = useState(null);
   const [sortSelectMode, setSortSelectMode] = useState(false);
   const [sortSelectedIds, setSortSelectedIds] = useState(() => new Set());
+  const [librarySelectedIds, setLibrarySelectedIds] = useState(() => new Set());
   const [sorting, setSorting] = useState(false);
   const [sortReview, setSortReview] = useState(null);
   const inputRef = useRef(null);
   const contentRef = useRef(null);
+  const lastSelectIndexRef = useRef(null);
 
   const loadPhotos = async () => {
     try {
@@ -1101,6 +1104,73 @@ function PhotoLibraryModal({
     });
   };
 
+  const handlePhotoPick = (index, e) => {
+    const photo = filteredPhotos[index];
+    if (!photo) return;
+    const id = String(photo.id);
+
+    if (selectMode) {
+      if (e.shiftKey && lastSelectIndexRef.current != null) {
+        const start = Math.min(lastSelectIndexRef.current, index);
+        const end = Math.max(lastSelectIndexRef.current, index);
+        setLibrarySelectedIds((prev) => {
+          const next = new Set(prev);
+          for (let i = start; i <= end; i += 1) {
+            next.add(String(filteredPhotos[i].id));
+          }
+          return next;
+        });
+      } else if (e.metaKey || e.ctrlKey) {
+        setLibrarySelectedIds((prev) => {
+          const next = new Set(prev);
+          if (next.has(id)) next.delete(id);
+          else next.add(id);
+          return next;
+        });
+        lastSelectIndexRef.current = index;
+      } else {
+        setLibrarySelectedIds((prev) => {
+          if (prev.size === 1 && prev.has(id)) return new Set();
+          return new Set([id]);
+        });
+        lastSelectIndexRef.current = index;
+      }
+      return;
+    }
+
+    if (sortSelectMode) {
+      if (e.shiftKey && lastSelectIndexRef.current != null) {
+        const start = Math.min(lastSelectIndexRef.current, index);
+        const end = Math.max(lastSelectIndexRef.current, index);
+        setSortSelectedIds((prev) => {
+          const next = new Set(prev);
+          for (let i = start; i <= end; i += 1) {
+            next.add(String(filteredPhotos[i].id));
+          }
+          return next;
+        });
+      } else {
+        toggleSortSelect(photo.id);
+        lastSelectIndexRef.current = index;
+      }
+      return;
+    }
+
+    setViewerIndex(index);
+  };
+
+  const confirmLibrarySelection = () => {
+    const selected = filteredPhotos.filter((p) => librarySelectedIds.has(String(p.id)));
+    if (selected.length === 0) return;
+    if (onSelectPhotos) {
+      onSelectPhotos(selected);
+    } else if (onSelectPhoto) {
+      selected.forEach((p) => onSelectPhoto(p));
+    }
+    setLibrarySelectedIds(new Set());
+    lastSelectIndexRef.current = null;
+  };
+
   const runAiSort = async () => {
     const candidates = sortSelectMode && sortSelectedIds.size > 0
       ? filteredPhotos.filter((p) => sortSelectedIds.has(String(p.id)))
@@ -1150,7 +1220,7 @@ function PhotoLibraryModal({
               </h3>
               <p className="text-xs text-slate-500 truncate">
                 {selectMode
-                  ? 'Click a photo to add it to this event'
+                  ? 'Click to select · Shift+click for a range · then Add'
                   : sortSelectMode
                     ? 'Click photos to select, then run Sort with AI'
                     : 'Browse and manage all your pictures'}
@@ -1234,10 +1304,11 @@ function PhotoLibraryModal({
             <div className="mb-4 text-center py-3 text-sm text-slate-600">Uploading photos...</div>
           )}
 
-          {sorting && (
-            <div className="mb-4 text-center py-3 text-sm text-slate-600 flex items-center justify-center gap-2">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-slate-700" />
-              Claude is grouping your photos…
+          {selectMode && (
+            <div className="mb-3 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+              {librarySelectedIds.size > 0
+                ? `${librarySelectedIds.size} selected — click Add to event when ready`
+                : 'Click a photo to select it. Hold Shift and click another to select everything in between.'}
             </div>
           )}
 
@@ -1300,30 +1371,22 @@ function PhotoLibraryModal({
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
               {filteredPhotos.map((p, i) => {
                 const isSortSelected = sortSelectMode && sortSelectedIds.has(String(p.id));
+                const isLibrarySelected = selectMode && librarySelectedIds.has(String(p.id));
+                const isSelected = isSortSelected || isLibrarySelected;
                 return (
                 <div
                   key={p.id}
                   className={`group relative rounded-lg overflow-hidden border bg-slate-50 shadow-sm ${
-                    isSortSelected ? 'border-slate-800 ring-2 ring-slate-800/30' : 'border-slate-200'
+                    isSelected ? 'border-blue-600 ring-2 ring-blue-500/40' : 'border-slate-200'
                   }`}
                 >
                   <button
                     type="button"
                     className="w-full aspect-square block"
-                    onClick={() => {
-                      if (selectMode && onSelectPhoto) {
-                        onSelectPhoto(p);
-                        return;
-                      }
-                      if (sortSelectMode) {
-                        toggleSortSelect(p.id);
-                        return;
-                      }
-                      setViewerIndex(i);
-                    }}
+                    onClick={(e) => handlePhotoPick(i, e)}
                     title={
                       selectMode
-                        ? 'Add to event'
+                        ? 'Select photo (Shift+click for range)'
                         : sortSelectMode
                           ? 'Toggle for AI sort'
                           : p.name
@@ -1331,6 +1394,11 @@ function PhotoLibraryModal({
                   >
                     <img src={p.url} alt={p.name} className="w-full h-full object-cover" />
                   </button>
+                  {isLibrarySelected && (
+                    <span className="absolute top-1.5 left-1.5 w-5 h-5 rounded-full bg-blue-600 text-white text-[11px] font-semibold flex items-center justify-center shadow">
+                      ✓
+                    </span>
+                  )}
                   <div className="px-2 py-1.5 bg-white border-t border-slate-100">
                     <div className="text-[11px] text-slate-700 truncate font-medium" title={p.name}>{p.name}</div>
                     <div className="text-[10px] text-slate-500 truncate">
@@ -1365,11 +1433,22 @@ function PhotoLibraryModal({
           )}
         </div>
 
-        <div className="p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-sm text-slate-600">
+        <div className="p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between gap-3 text-sm text-slate-600">
           <span>{filteredPhotos.length} photo{filteredPhotos.length === 1 ? '' : 's'}</span>
-          <button type="button" onClick={onClose} className="px-3 py-2 border rounded-lg bg-white hover:bg-slate-50">
-            Close
-          </button>
+          <div className="flex items-center gap-2">
+            {selectMode && librarySelectedIds.size > 0 && (
+              <button
+                type="button"
+                onClick={confirmLibrarySelection}
+                className="px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+              >
+                Add {librarySelectedIds.size} to event
+              </button>
+            )}
+            <button type="button" onClick={onClose} className="px-3 py-2 border rounded-lg bg-white hover:bg-slate-50">
+              Close
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1381,6 +1460,29 @@ function PhotoLibraryModal({
           onClose={() => setViewerIndex(null)}
           title="Photo Library"
         />
+      )}
+
+      {sorting && (
+        <div
+          className="fixed inset-0 z-[65] flex items-center justify-center p-4"
+          style={{ background: 'rgba(71, 85, 105, 0.72)' }}
+          role="status"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full px-8 py-10 text-center">
+            <div className="flex justify-center mb-5">
+              <Sparkles className="w-8 h-8 text-slate-700" />
+            </div>
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-slate-800 mx-auto mb-5" />
+            <h3 className="text-lg font-semibold text-slate-900 mb-2">
+              Claude is sorting your photos
+            </h3>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              Grouping into existing and new events… This can take a minute for large batches.
+            </p>
+          </div>
+        </div>
       )}
 
       {sortReview && (
@@ -1615,13 +1717,14 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
   });
   const [imagePreview, setImagePreview] = useState(initialEvent?.image || null);
   const [taggedPhotos, setTaggedPhotos] = useState([]);
-  const [availablePhotos, setAvailablePhotos] = useState([]);
   const [showPhotoSelector, setShowPhotoSelector] = useState(false);
+  const [selectedEventPhotoIds, setSelectedEventPhotoIds] = useState(() => new Set());
   const [saveError, setSaveError] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingPhotos, setIsUploadingPhotos] = useState(false);
   const fileInputRef = useRef(null);
   const galleryInputRef = useRef(null);
+  const lastEventPhotoIndexRef = useRef(null);
 
   // Load tagged photos when editing
   useEffect(() => {
@@ -1643,24 +1746,6 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
     loadTaggedPhotos();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEdit, initialEvent?.id]); // formData.image and initialEvent.image intentionally excluded to prevent infinite loops
-
-  // Load available photos for selection
-  // fetchPhotos() with no category returns ALL photos (including untagged)
-  // This ensures all photos uploaded from Manage Photos are available for selection
-  useEffect(() => {
-    const loadAvailablePhotos = async () => {
-      try {
-        // Fetch all photos (no category filter) - includes untagged photos
-        const photos = await fetchPhotos();
-        setAvailablePhotos(photos);
-      } catch (err) {
-        console.error('Error loading available photos:', err);
-      }
-    };
-    if (showPhotoSelector) {
-      loadAvailablePhotos();
-    }
-  }, [showPhotoSelector]);
 
   // Journal local draft
   const [journalDraft, setJournalDraft] = useState({ title: '', content: '', attachments: [] });
@@ -1870,20 +1955,68 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
     }
   };
 
-  const handleSelectPhoto = (photoOrId) => {
-    const photo =
-      typeof photoOrId === 'object' && photoOrId?.id
-        ? photoOrId
-        : availablePhotos.find((p) => p.id === photoOrId);
-    if (!photo) return;
-    if (!taggedPhotos.find((p) => String(p.id) === String(photo.id))) {
-      setTaggedPhotos((prev) => [...prev, photo]);
-    }
+  const handleSelectPhotos = (photosToAdd) => {
+    const list = Array.isArray(photosToAdd) ? photosToAdd : [];
+    if (list.length === 0) return;
+    setTaggedPhotos((prev) => {
+      const existing = new Set(prev.map((p) => String(p.id)));
+      return [...prev, ...list.filter((p) => !existing.has(String(p.id)))];
+    });
+    setFormData((prev) => {
+      if (prev.primary_photo_id || prev.image) return prev;
+      return {
+        ...prev,
+        image: list[0].url,
+        primary_photo_id: list[0].id
+      };
+    });
+    setImagePreview((prev) => prev || list[0].url);
     setShowPhotoSelector(false);
+  };
+
+  const handleEventPhotoClick = (index, e) => {
+    const photo = taggedPhotos[index];
+    if (!photo) return;
+    const id = String(photo.id);
+
+    if (e.shiftKey && lastEventPhotoIndexRef.current != null) {
+      const start = Math.min(lastEventPhotoIndexRef.current, index);
+      const end = Math.max(lastEventPhotoIndexRef.current, index);
+      setSelectedEventPhotoIds((prev) => {
+        const next = new Set(prev);
+        for (let i = start; i <= end; i += 1) {
+          next.add(String(taggedPhotos[i].id));
+        }
+        return next;
+      });
+      return;
+    }
+
+    if (e.metaKey || e.ctrlKey) {
+      setSelectedEventPhotoIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+      lastEventPhotoIndexRef.current = index;
+      return;
+    }
+
+    setSelectedEventPhotoIds((prev) => {
+      if (prev.size === 1 && prev.has(id)) return new Set();
+      return new Set([id]);
+    });
+    lastEventPhotoIndexRef.current = index;
   };
 
   const handleUntagPhoto = (photoId) => {
     setTaggedPhotos(prev => prev.filter(p => p.id !== photoId));
+    setSelectedEventPhotoIds((prev) => {
+      const next = new Set(prev);
+      next.delete(String(photoId));
+      return next;
+    });
     setFormData(prev => {
       if (String(prev.primary_photo_id) !== String(photoId)) return prev;
       return { ...prev, primary_photo_id: null, image: null };
@@ -1892,6 +2025,24 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
       const removed = taggedPhotos.find(p => p.id === photoId);
       return removed && prev === removed.url ? null : prev;
     });
+  };
+
+  const handleUntagSelectedPhotos = () => {
+    if (selectedEventPhotoIds.size === 0) return;
+    const ids = selectedEventPhotoIds;
+    setTaggedPhotos((prev) => prev.filter((p) => !ids.has(String(p.id))));
+    setFormData((prev) => {
+      if (!ids.has(String(prev.primary_photo_id))) return prev;
+      return { ...prev, primary_photo_id: null, image: null };
+    });
+    setImagePreview((prev) => {
+      const stillVisible = taggedPhotos.find(
+        (p) => !ids.has(String(p.id)) && p.url === prev
+      );
+      return stillVisible ? prev : null;
+    });
+    setSelectedEventPhotoIds(new Set());
+    lastEventPhotoIndexRef.current = null;
   };
 
   // eslint-disable-next-line no-unused-vars
@@ -2079,6 +2230,15 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
                     >
                       Add from library
                     </button>
+                    {selectedEventPhotoIds.size > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleUntagSelectedPhotos}
+                        className="px-3 py-1.5 text-sm rounded-lg border border-red-200 bg-white text-red-700 hover:bg-red-50"
+                      >
+                        Remove {selectedEventPhotoIds.size} selected
+                      </button>
+                    )}
                     <input
                       ref={galleryInputRef}
                       type="file"
@@ -2098,6 +2258,11 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
                   {isUploadingPhotos && (
                     <p className="text-xs text-gray-500">Uploading photo...</p>
                   )}
+                  {taggedPhotos.length > 0 && (
+                    <p className="text-xs text-slate-500">
+                      Click to select · Shift+click a range · then Remove selected
+                    </p>
+                  )}
 
                   {taggedPhotos.length === 0 ? (
                     <button
@@ -2110,18 +2275,37 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
                     </button>
                   ) : (
                     <div className="grid grid-cols-2 gap-2">
-                      {taggedPhotos.map((photo) => {
+                      {taggedPhotos.map((photo, index) => {
                         const isCover = formData.primary_photo_id
                           ? String(formData.primary_photo_id) === String(photo.id)
                           : formData.image === photo.url;
+                        const isSelected = selectedEventPhotoIds.has(String(photo.id));
                         return (
                           <div
                             key={photo.id}
-                            className={`relative group rounded-lg overflow-hidden border bg-white ${
-                              isCover ? 'ring-2 ring-amber-400 border-amber-300' : 'border-slate-200'
+                            role="button"
+                            tabIndex={0}
+                            onClick={(e) => handleEventPhotoClick(index, e)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                handleEventPhotoClick(index, e);
+                              }
+                            }}
+                            className={`relative group rounded-lg overflow-hidden border bg-white cursor-pointer ${
+                              isSelected
+                                ? 'ring-2 ring-blue-500 border-blue-400'
+                                : isCover
+                                  ? 'ring-2 ring-amber-400 border-amber-300'
+                                  : 'border-slate-200'
                             }`}
                           >
                             <img src={photo.url} alt={photo.name} className="w-full h-24 object-cover" />
+                            {isSelected && (
+                              <span className="absolute top-1 right-1 w-5 h-5 rounded-full bg-blue-600 text-white text-[11px] font-semibold flex items-center justify-center shadow">
+                                ✓
+                              </span>
+                            )}
                             {isCover && (
                               <span className="absolute top-1 left-1 inline-flex items-center gap-0.5 bg-amber-400 text-slate-900 text-[10px] font-semibold px-1.5 py-0.5 rounded">
                                 <Star className="w-3 h-3 fill-current" />
@@ -2132,7 +2316,8 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
                               {!isCover && (
                                 <button
                                   type="button"
-                                  onClick={() => {
+                                  onClick={(e) => {
+                                    e.stopPropagation();
                                     setFormData((prev) => ({
                                       ...prev,
                                       image: photo.url,
@@ -2148,7 +2333,10 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
                               )}
                               <button
                                 type="button"
-                                onClick={() => handleUntagPhoto(photo.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleUntagPhoto(photo.id);
+                                }}
                                 className="text-[10px] px-2 py-1 bg-red-500 text-white rounded shadow hover:bg-red-600"
                                 title="Remove from event"
                               >
@@ -2176,18 +2364,7 @@ function EventForm({ mode, initialEvent, onClose, onSave, onDelete, onOpenGaller
                       onClose={() => setShowPhotoSelector(false)}
                       selectMode
                       excludeIds={taggedPhotos.map((p) => p.id)}
-                      onSelectPhoto={(photo) => {
-                        handleSelectPhoto(photo);
-                        setFormData((prev) => {
-                          if (prev.primary_photo_id || prev.image) return prev;
-                          return {
-                            ...prev,
-                            image: photo.url,
-                            primary_photo_id: photo.id
-                          };
-                        });
-                        setImagePreview((prev) => prev || photo.url);
-                      }}
+                      onSelectPhotos={handleSelectPhotos}
                     />
                   )}
                 </div>

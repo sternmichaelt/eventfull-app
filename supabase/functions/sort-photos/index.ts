@@ -5,7 +5,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-type PhotoIn = { id: string; url: string; name?: string };
+type PhotoIn = { id: string; url: string; name?: string; taken_at?: string | null };
 type EventIn = { id: string; title: string; date?: string; category?: string };
 
 type SortResult = {
@@ -111,16 +111,21 @@ async function classifyBatch(
 Existing events (match to these when content clearly fits):
 ${JSON.stringify(eventsSummary, null, 2)}
 
-Photos in this batch (ids and filenames):
+Photos in this batch (ids, filenames, and camera taken_at when known):
 ${JSON.stringify(
-  photos.map((p) => ({ id: String(p.id), name: p.name || '' })),
+  photos.map((p) => ({
+    id: String(p.id),
+    name: p.name || '',
+    taken_at: p.taken_at || null,
+  })),
   null,
   2
 )}
 
 Rules:
 - Prefer matching an existing event when the photo clearly belongs to it.
-- Otherwise group related photos into suggested newEvents with a short title, ISO date guess (YYYY-MM-DD) if possible, and category one of: milestone, education, career, relationship, birthday, family.
+- When taken_at is present, treat it as the real date the photo was taken (prefer over visual guesses).
+- Otherwise group related photos into suggested newEvents with a short title, ISO date (YYYY-MM-DD) from taken_at when available else a visual guess if possible, and category one of: milestone, education, career, relationship, birthday, family.
 - Put unclear photos in unassigned.
 - Every photo id from this batch must appear exactly once across matches, newEvents, and unassigned.
 - Respond with ONLY valid JSON (no markdown) in this shape:
@@ -135,7 +140,7 @@ Rules:
   for (const photo of photos) {
     content.push({
       type: 'text',
-      text: `Photo id=${photo.id} name=${photo.name || ''}`,
+      text: `Photo id=${photo.id} name=${photo.name || ''} taken_at=${photo.taken_at || 'unknown'}`,
     });
     content.push({
       type: 'image',

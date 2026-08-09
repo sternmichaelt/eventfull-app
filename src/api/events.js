@@ -533,7 +533,7 @@ export async function uploadPhotoFile(file, { name, category } = {}) {
       user_id: userId,
       url,
       name: fileName,
-      category: category || 'untagged'
+      category: category || 'untagged',
     })
     .select()
     .single();

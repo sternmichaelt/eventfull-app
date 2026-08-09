@@ -52,4 +52,5 @@ supabase functions deploy sort-photos
 - Photos must have public `https://` URLs (normal Supabase Storage uploads).
 - Large batches are processed in chunks of ~12 images.
 - The React app never sees your Anthropic API key.
-- Redeploy the Edge Function after changing the model: `supabase functions deploy sort-photos`
+- Redeploy the Edge Function after changing the model or prompt: `supabase functions deploy sort-photos`
+- Camera date metadata (`taken_at`) is optional and not required for normal use or AI sorting.

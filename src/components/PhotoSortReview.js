@@ -279,7 +279,7 @@ export default function PhotoSortReview({
                 <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-semibold text-slate-900">
-                      New: {group.title}
+                      New Event: {group.title}
                     </div>
                     <p className="text-xs text-slate-500 mt-0.5">
                       {group.date ? `Suggested date: ${group.date}` : 'Date: today'}
