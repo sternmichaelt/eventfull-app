@@ -225,8 +225,21 @@ function BackgroundModal({ current, onSelect, onClear, onClose }) {
   );
 }
 
-function SettingsModal({ currentBackground, onSelectBackground, onClearBackground, onClose, customCategories, onUpdateCategories }) {
-  const [activeTab, setActiveTab] = useState('background');
+function SettingsModal({
+  currentBackground,
+  onSelectBackground,
+  onClearBackground,
+  onClose,
+  customCategories,
+  onUpdateCategories,
+  user = null,
+  timelines = [],
+  sharedUsers = {},
+  currentTimelineId = null,
+  eventCount = 0,
+  onSignOut,
+}) {
+  const [activeTab, setActiveTab] = useState('profile');
   // Background upload (settings)
   const [bgUploadPreview, setBgUploadPreview] = useState(null);
   const [bgUploadError, setBgUploadError] = useState('');
@@ -234,6 +247,25 @@ function SettingsModal({ currentBackground, onSelectBackground, onClearBackgroun
   const [editingCategory, setEditingCategory] = useState(null);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryKey, setNewCategoryKey] = useState('');
+
+  // Profile
+  const { updatePassword, updateProfile } = useAuth();
+  const [displayName, setDisplayName] = useState(
+    user?.user_metadata?.full_name || ''
+  );
+  const [profileMessage, setProfileMessage] = useState('');
+  const [profileError, setProfileError] = useState('');
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordMessage, setPasswordMessage] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSaving, setPasswordSaving] = useState(false);
+
+  useEffect(() => {
+    setDisplayName(user?.user_metadata?.full_name || '');
+  }, [user]);
 
   // Get all categories (default + custom)
   const getAllCategories = () => {
@@ -250,6 +282,69 @@ function SettingsModal({ currentBackground, onSelectBackground, onClearBackgroun
   const allCategories = getAllCategories();
   const totalCategories = Object.keys(allCategories).length;
   const canAddMore = totalCategories < 10;
+
+  const sharedTimelineEntries = timelines
+    .map((t) => ({
+      timeline: t,
+      emails: sharedUsers[t.id] || [],
+    }))
+    .filter((entry) => entry.emails.length > 0);
+
+  const memberSince = user?.created_at
+    ? new Date(user.created_at).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      })
+    : null;
+
+  const handleSaveDisplayName = async () => {
+    setProfileError('');
+    setProfileMessage('');
+    setProfileSaving(true);
+    try {
+      const { error } = await updateProfile({ fullName: displayName.trim() });
+      if (error) {
+        setProfileError(error.message);
+      } else {
+        setProfileMessage('Name saved.');
+      }
+    } catch (err) {
+      setProfileError(err.message || 'Failed to save name');
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    setPasswordError('');
+    setPasswordMessage('');
+    if (newPassword.length < 6) {
+      setPasswordError('New password must be at least 6 characters.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('New passwords do not match.');
+      return;
+    }
+    setPasswordSaving(true);
+    try {
+      const { error } = await updatePassword(currentPassword, newPassword);
+      if (error) {
+        setPasswordError(error.message);
+      } else {
+        setPasswordMessage('Password updated.');
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      }
+    } catch (err) {
+      setPasswordError(err.message || 'Failed to update password');
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
 
   // Background upload handlers (compact, mirrors BackgroundModal validation)
   const handleBgUpload = (e) => {
@@ -344,6 +439,17 @@ function SettingsModal({ currentBackground, onSelectBackground, onClearBackgroun
           <nav className="flex space-x-8 px-6">
             <button
               type="button"
+              onClick={() => setActiveTab('profile')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'profile'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Profile
+            </button>
+            <button
+              type="button"
               onClick={() => setActiveTab('background')}
               className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
                 activeTab === 'background'
@@ -368,6 +474,179 @@ function SettingsModal({ currentBackground, onSelectBackground, onClearBackgroun
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
+          {/* Profile Tab */}
+          {activeTab === 'profile' && (
+            <div className="space-y-8">
+              <div>
+                <h4 className="text-lg font-semibold text-gray-900 mb-1">Account</h4>
+                <p className="text-sm text-gray-600 mb-4">Your sign-in details and profile.</p>
+                <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
+                  <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm text-gray-500">Email</span>
+                    <span className="text-sm font-medium text-gray-900">{user?.email || '—'}</span>
+                  </div>
+                  {memberSince && (
+                    <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-sm text-gray-500">Member since</span>
+                      <span className="text-sm font-medium text-gray-900">{memberSince}</span>
+                    </div>
+                  )}
+                  <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm text-gray-500">Events on this timeline</span>
+                    <span className="text-sm font-medium text-gray-900">{eventCount}</span>
+                  </div>
+                  <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm text-gray-500">Timelines</span>
+                    <span className="text-sm font-medium text-gray-900">{timelines.length}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-lg font-semibold text-gray-900 mb-3">Display name</h4>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    placeholder="Your name"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveDisplayName}
+                    disabled={profileSaving}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {profileSaving ? 'Saving…' : 'Save name'}
+                  </button>
+                </div>
+                {profileError && (
+                  <p className="mt-2 text-sm text-red-600">{profileError}</p>
+                )}
+                {profileMessage && (
+                  <p className="mt-2 text-sm text-green-600">{profileMessage}</p>
+                )}
+              </div>
+
+              <div>
+                <h4 className="text-lg font-semibold text-gray-900 mb-1">Change password</h4>
+                <p className="text-sm text-gray-600 mb-3">Enter your current password, then choose a new one.</p>
+                <form onSubmit={handleChangePassword} className="space-y-3 max-w-md">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Current password</label>
+                    <input
+                      type="password"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      required
+                      autoComplete="current-password"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">New password</label>
+                    <input
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      required
+                      minLength={6}
+                      autoComplete="new-password"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Confirm new password</label>
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      required
+                      minLength={6}
+                      autoComplete="new-password"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                  </div>
+                  {passwordError && (
+                    <p className="text-sm text-red-600">{passwordError}</p>
+                  )}
+                  {passwordMessage && (
+                    <p className="text-sm text-green-600">{passwordMessage}</p>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={passwordSaving}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {passwordSaving ? 'Updating…' : 'Update password'}
+                  </button>
+                </form>
+              </div>
+
+              <div>
+                <h4 className="text-lg font-semibold text-gray-900 mb-3">Your timelines</h4>
+                {timelines.length === 0 ? (
+                  <p className="text-sm text-gray-500">No timelines yet.</p>
+                ) : (
+                  <ul className="border border-gray-200 rounded-lg divide-y divide-gray-100">
+                    {timelines.map((t) => (
+                      <li key={t.id} className="px-4 py-3 flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium text-gray-900 truncate flex items-center gap-2">
+                            {t.name}
+                            {t.id === currentTimelineId && (
+                              <span className="text-[10px] uppercase tracking-wide bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded">
+                                Current
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {t.event_count != null ? `${t.event_count} events` : '—'}
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div>
+                <h4 className="text-lg font-semibold text-gray-900 mb-3">Shared timelines</h4>
+                {sharedTimelineEntries.length === 0 ? (
+                  <p className="text-sm text-gray-500">You haven't shared any timelines yet.</p>
+                ) : (
+                  <ul className="border border-gray-200 rounded-lg divide-y divide-gray-100">
+                    {sharedTimelineEntries.map(({ timeline, emails }) => (
+                      <li key={timeline.id} className="px-4 py-3">
+                        <div className="text-sm font-medium text-gray-900">{timeline.name}</div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          Shared with: {emails.join(', ')}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              {onSignOut && (
+                <div className="pt-2 border-t border-gray-200">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onSignOut();
+                    }}
+                    className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Sign out
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Background Tab */}
           {activeTab === 'background' && (
             <div className="space-y-4">
@@ -3575,6 +3854,12 @@ function EventFull() {
             onClose={() => setShowSettings(false)}
             customCategories={customCategories}
             onUpdateCategories={setCustomCategories}
+            user={user}
+            timelines={timelines}
+            sharedUsers={sharedUsers}
+            currentTimelineId={currentTimelineId}
+            eventCount={events.length}
+            onSignOut={signOut}
           />
         )}
 
@@ -4337,6 +4622,12 @@ function EventFull() {
           onClose={() => setShowSettings(false)}
           customCategories={customCategories}
           onUpdateCategories={setCustomCategories}
+          user={user}
+          timelines={timelines}
+          sharedUsers={sharedUsers}
+          currentTimelineId={currentTimelineId}
+          eventCount={events.length}
+          onSignOut={signOut}
         />
       )}
 
