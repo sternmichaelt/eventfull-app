@@ -7,7 +7,7 @@ import AuthModal from './components/AuthModal';
 import PhotoSortReview from './components/PhotoSortReview';
 import { classifyPhotos } from './ai/PhotoClassifier';
 // --- All Events list (easy revert) ---
-import AllEventsListModal from './components/AllEventsListModal';
+import AllEventsListView from './components/AllEventsListView';
 // --- end All Events list ---
 
 // [Then all your EventFull component code...]
@@ -2911,7 +2911,7 @@ function EventFull() {
   const [eventsVersion, setEventsVersion] = useState(0);
   const [showAllJournals, setShowAllJournals] = useState(false);
   // --- All Events list (easy revert) ---
-  const [showAllEvents, setShowAllEvents] = useState(false);
+  const [viewMode, setViewMode] = useState('timeline'); // 'timeline' | 'list'
   // --- end All Events list ---
   const [galleryForEvent, setGalleryForEvent] = useState(null);
   const [galleryStartIndex, setGalleryStartIndex] = useState(0);
@@ -3381,31 +3381,49 @@ function EventFull() {
                 Journals
               </button>
               {/* --- All Events list (easy revert) --- */}
-              <button
-                onClick={() => setShowAllEvents(true)}
-                className="border border-gray-300 text-gray-700 px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50"
-                title="View all events as a list"
-              >
-                <List className="w-4 h-4" />
-                Events
-              </button>
-              {/* --- end All Events list --- */}
               <div className="bg-gray-100 rounded-lg p-1 flex gap-1">
-                <button 
-                  onClick={handleZoomOut}
-                  className="p-2 hover:bg-white rounded transition-colors"
-                  title="Zoom Out"
+                <button
+                  type="button"
+                  onClick={() => setViewMode('timeline')}
+                  className={`px-3 py-2 rounded-md flex items-center gap-2 text-sm transition-colors ${
+                    viewMode === 'timeline' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                  title="Timeline view"
                 >
-                  <ZoomOut className="w-4 h-4" />
+                  <Calendar className="w-4 h-4" />
+                  Timeline
                 </button>
-                <button 
-                  onClick={handleZoomIn}
-                  className="p-2 hover:bg-white rounded transition-colors"
-                  title="Zoom In"
+                <button
+                  type="button"
+                  onClick={() => setViewMode('list')}
+                  className={`px-3 py-2 rounded-md flex items-center gap-2 text-sm transition-colors ${
+                    viewMode === 'list' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                  title="List view"
                 >
-                  <ZoomIn className="w-4 h-4" />
+                  <List className="w-4 h-4" />
+                  List
                 </button>
               </div>
+              {/* --- end All Events list --- */}
+              {viewMode === 'timeline' && (
+                <div className="bg-gray-100 rounded-lg p-1 flex gap-1">
+                  <button 
+                    onClick={handleZoomOut}
+                    className="p-2 hover:bg-white rounded transition-colors"
+                    title="Zoom Out"
+                  >
+                    <ZoomOut className="w-4 h-4" />
+                  </button>
+                  <button 
+                    onClick={handleZoomIn}
+                    className="p-2 hover:bg-white rounded transition-colors"
+                    title="Zoom In"
+                  >
+                    <ZoomIn className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
               
               <button 
                 onClick={() => setShowSettings(true)}
@@ -3426,23 +3444,45 @@ function EventFull() {
           </div>
         </div>
 
-        {/* Empty Timeline */}
-        <div className="flex-1 flex items-center justify-center p-6">
-          <div className="text-center max-w-md">
-            <div className="text-6xl mb-4">📅</div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">Start Your Timeline</h2>
-            <p className="text-gray-600 mb-6">Add your first life event to begin building your personal timeline.</p>
-            <button 
-              onClick={() => setShowAddForm(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 mx-auto transition-colors"
-            >
-              <Plus className="w-5 h-5" />
-              Add Your First Event
-            </button>
-          </div>
+        {/* Empty main content */}
+        <div className="flex-1 overflow-hidden relative z-0">
+          {viewMode === 'list' ? (
+            <AllEventsListView
+              events={events}
+              selectedCategories={selectedCategories}
+              onToggleCategory={toggleCategory}
+              onSelectAll={selectAllCategories}
+              allCategories={allCategories}
+              birthDate={null}
+              onEditEvent={(event) => {
+                setSelectedEvent(event);
+                setEditingEvent(event);
+              }}
+              onOpenGallery={(event) => {
+                setGalleryForEvent(event);
+                setGalleryStartIndex(0);
+              }}
+            />
+          ) : (
+            <div className="h-full flex items-center justify-center p-6">
+              <div className="text-center max-w-md">
+                <div className="text-6xl mb-4">📅</div>
+                <h2 className="text-2xl font-bold text-gray-800 mb-2">Start Your Timeline</h2>
+                <p className="text-gray-600 mb-6">Add your first life event to begin building your personal timeline.</p>
+                <button 
+                  onClick={() => setShowAddForm(true)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 mx-auto transition-colors"
+                >
+                  <Plus className="w-5 h-5" />
+                  Add Your First Event
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Category Legend */}
+        {/* Category Legend — timeline only */}
+        {viewMode === 'timeline' && (
         <div className="bg-white border-t border-gray-200 px-6 py-4">
           <div className="flex flex-wrap gap-4 justify-center">
             <button
@@ -3476,6 +3516,7 @@ function EventFull() {
             })}
           </div>
         </div>
+        )}
 
         {/* Stats Summary */}
         <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3">
@@ -3525,30 +3566,6 @@ function EventFull() {
             allCategories={allCategories}
           />
         )}
-
-        {/* --- All Events list (easy revert) --- */}
-        {showAllEvents && (
-          <AllEventsListModal
-            events={events}
-            selectedCategories={selectedCategories}
-            onToggleCategory={toggleCategory}
-            onSelectAll={selectAllCategories}
-            onClose={() => setShowAllEvents(false)}
-            allCategories={allCategories}
-            birthDate={sortedEvents[0]?.date || null}
-            onEditEvent={(event) => {
-              setShowAllEvents(false);
-              setSelectedEvent(event);
-              setEditingEvent(event);
-            }}
-            onOpenGallery={(event) => {
-              setShowAllEvents(false);
-              setGalleryForEvent(event);
-              setGalleryStartIndex(0);
-            }}
-          />
-        )}
-        {/* --- end All Events list --- */}
 
         {showSettings && (
           <SettingsModal
@@ -3808,31 +3825,49 @@ function EventFull() {
               Journals
             </button>
             {/* --- All Events list (easy revert) --- */}
-            <button
-              onClick={() => setShowAllEvents(true)}
-              className="border border-gray-300 text-gray-700 px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50"
-              title="View all events as a list"
-            >
-              <List className="w-4 h-4" />
-              Events
-            </button>
-            {/* --- end All Events list --- */}
             <div className="bg-gray-100 rounded-lg p-1 flex gap-1">
-              <button 
-                onClick={handleZoomOut}
-                className="p-2 hover:bg-white rounded transition-colors"
-                title="Zoom Out"
+              <button
+                type="button"
+                onClick={() => setViewMode('timeline')}
+                className={`px-3 py-2 rounded-md flex items-center gap-2 text-sm transition-colors ${
+                  viewMode === 'timeline' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'
+                }`}
+                title="Timeline view"
               >
-                <ZoomOut className="w-4 h-4" />
+                <Calendar className="w-4 h-4" />
+                Timeline
               </button>
-              <button 
-                onClick={handleZoomIn}
-                className="p-2 hover:bg-white rounded transition-colors"
-                title="Zoom In"
+              <button
+                type="button"
+                onClick={() => setViewMode('list')}
+                className={`px-3 py-2 rounded-md flex items-center gap-2 text-sm transition-colors ${
+                  viewMode === 'list' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'
+                }`}
+                title="List view"
               >
-                <ZoomIn className="w-4 h-4" />
+                <List className="w-4 h-4" />
+                List
               </button>
             </div>
+            {/* --- end All Events list --- */}
+            {viewMode === 'timeline' && (
+              <div className="bg-gray-100 rounded-lg p-1 flex gap-1">
+                <button 
+                  onClick={handleZoomOut}
+                  className="p-2 hover:bg-white rounded transition-colors"
+                  title="Zoom Out"
+                >
+                  <ZoomOut className="w-4 h-4" />
+                </button>
+                <button 
+                  onClick={handleZoomIn}
+                  className="p-2 hover:bg-white rounded transition-colors"
+                  title="Zoom In"
+                >
+                  <ZoomIn className="w-4 h-4" />
+                </button>
+              </div>
+            )}
             
             <button 
               onClick={() => setShowSettings(true)}
@@ -3865,6 +3900,25 @@ function EventFull() {
 
       {/* Main content wrapper lifted above background layer */}
       <div className="relative z-0 flex-1 overflow-hidden">
+        {viewMode === 'list' ? (
+          <AllEventsListView
+            events={events}
+            selectedCategories={selectedCategories}
+            onToggleCategory={toggleCategory}
+            onSelectAll={selectAllCategories}
+            allCategories={allCategories}
+            birthDate={sortedEvents[0]?.date || null}
+            onEditEvent={(event) => {
+              setSelectedEvent(event);
+              setEditingEvent(event);
+            }}
+            onOpenGallery={(event) => {
+              setGalleryForEvent(event);
+              setGalleryStartIndex(0);
+            }}
+          />
+        ) : (
+          <>
         {/* Background layer (applies only to content area) */}
         {backgroundUrl && (
           <div
@@ -4129,9 +4183,12 @@ function EventFull() {
             })}
           </div>
         </div>
+          </>
+        )}
       </div>
 
-      {/* Category Legend */}
+      {/* Category Legend — timeline only */}
+      {viewMode === 'timeline' && (
       <div className="bg-white border-t border-gray-200 px-6 py-4">
         <div className="flex flex-wrap gap-4 justify-center">
           <button
@@ -4165,6 +4222,7 @@ function EventFull() {
           })}
         </div>
       </div>
+      )}
 
       {/* Stats Summary */}
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3">
@@ -4235,30 +4293,6 @@ function EventFull() {
           allCategories={allCategories}
         />
       )}
-
-      {/* --- All Events list (easy revert) --- */}
-      {showAllEvents && (
-        <AllEventsListModal
-          events={events}
-          selectedCategories={selectedCategories}
-          onToggleCategory={toggleCategory}
-          onSelectAll={selectAllCategories}
-          onClose={() => setShowAllEvents(false)}
-          allCategories={allCategories}
-          birthDate={sortedEvents[0]?.date || null}
-          onEditEvent={(event) => {
-            setShowAllEvents(false);
-            setSelectedEvent(event);
-            setEditingEvent(event);
-          }}
-          onOpenGallery={(event) => {
-            setShowAllEvents(false);
-            setGalleryForEvent(event);
-            setGalleryStartIndex(0);
-          }}
-        />
-      )}
-      {/* --- end All Events list --- */}
 
       {/* Background Picker */}
       {showBackgroundPicker && (
