@@ -14,6 +14,7 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
 
   useEffect(() => {
     if (!supabase) {
@@ -21,17 +22,18 @@ export const AuthProvider = ({ children }) => {
       return;
     }
 
-    // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       setLoading(false);
     });
 
-    // Listen for auth changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
+      if (event === 'PASSWORD_RECOVERY') {
+        setPasswordRecovery(true);
+      }
       setLoading(false);
     });
 
@@ -64,8 +66,8 @@ export const AuthProvider = ({ children }) => {
     if (supabase) {
       await supabase.auth.signOut();
     }
-    // Clear guest user data
     localStorage.removeItem('eventfull:userId');
+    setPasswordRecovery(false);
   };
 
   const resetPassword = async (email) => {
@@ -75,6 +77,14 @@ export const AuthProvider = ({ children }) => {
     const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/reset-password`,
     });
+    return { data, error };
+  };
+
+  const setNewPassword = async (newPassword) => {
+    if (!supabase) {
+      return { data: null, error: { message: 'Supabase is not configured' } };
+    }
+    const { data, error } = await supabase.auth.updateUser({ password: newPassword });
     return { data, error };
   };
 
@@ -109,18 +119,26 @@ export const AuthProvider = ({ children }) => {
     return { data, error };
   };
 
+  const clearPasswordRecovery = () => {
+    setPasswordRecovery(false);
+    if (window.location.pathname === '/reset-password') {
+      window.history.replaceState({}, document.title, '/');
+    }
+  };
+
   const value = {
     user,
     loading,
+    passwordRecovery,
     signUp,
     signIn,
     signOut,
     resetPassword,
+    setNewPassword,
     updatePassword,
     updateProfile,
+    clearPasswordRecovery,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
-
-
