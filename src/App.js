@@ -1,11 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, ZoomIn, ZoomOut, Calendar, Heart, GraduationCap, Briefcase, Baby, Star, X, Camera, ChevronLeft, ChevronRight, Images, BookOpen, Settings, ChevronDown, LogOut, Sparkles } from 'lucide-react';
+import { Plus, ZoomIn, ZoomOut, Calendar, Heart, GraduationCap, Briefcase, Baby, Star, X, Camera, ChevronLeft, ChevronRight, Images, BookOpen, Settings, ChevronDown, LogOut, Sparkles, List } from 'lucide-react';
 import { fetchEvents, createEvent, updateEvent, deleteEvent, fetchTimelines, createTimeline, updateTimeline, deleteTimeline, shareTimeline, fetchSharedTimelines, fetchUserSettings, updateUserSettings, fetchPhotos, uploadPhotoFile, updatePhoto, deletePhoto, tagPhotoToEvent, untagPhotoFromEvent, getPhotosForEvent, migrateLegacyPhotosToStorage, ALLOWED_PHOTO_TYPES } from './api/events';
 import { testConnection } from './utils/testSupabaseConnection';
 import { useAuth } from './contexts/AuthContext';
 import AuthModal from './components/AuthModal';
 import PhotoSortReview from './components/PhotoSortReview';
 import { classifyPhotos } from './ai/PhotoClassifier';
+// --- All Events list (easy revert) ---
+import AllEventsListModal from './components/AllEventsListModal';
+// --- end All Events list ---
 
 // [Then all your EventFull component code...]
 
@@ -2907,6 +2910,9 @@ function EventFull() {
   const [photosMenuOpen, setPhotosMenuOpen] = useState(false);
   const [eventsVersion, setEventsVersion] = useState(0);
   const [showAllJournals, setShowAllJournals] = useState(false);
+  // --- All Events list (easy revert) ---
+  const [showAllEvents, setShowAllEvents] = useState(false);
+  // --- end All Events list ---
   const [galleryForEvent, setGalleryForEvent] = useState(null);
   const [galleryStartIndex, setGalleryStartIndex] = useState(0);
   const [showBackgroundPicker, setShowBackgroundPicker] = useState(false);
@@ -3374,6 +3380,16 @@ function EventFull() {
                 <BookOpen className="w-4 h-4" />
                 Journals
               </button>
+              {/* --- All Events list (easy revert) --- */}
+              <button
+                onClick={() => setShowAllEvents(true)}
+                className="border border-gray-300 text-gray-700 px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50"
+                title="View all events as a list"
+              >
+                <List className="w-4 h-4" />
+                Events
+              </button>
+              {/* --- end All Events list --- */}
               <div className="bg-gray-100 rounded-lg p-1 flex gap-1">
                 <button 
                   onClick={handleZoomOut}
@@ -3509,6 +3525,30 @@ function EventFull() {
             allCategories={allCategories}
           />
         )}
+
+        {/* --- All Events list (easy revert) --- */}
+        {showAllEvents && (
+          <AllEventsListModal
+            events={events}
+            selectedCategories={selectedCategories}
+            onToggleCategory={toggleCategory}
+            onSelectAll={selectAllCategories}
+            onClose={() => setShowAllEvents(false)}
+            allCategories={allCategories}
+            birthDate={sortedEvents[0]?.date || null}
+            onEditEvent={(event) => {
+              setShowAllEvents(false);
+              setSelectedEvent(event);
+              setEditingEvent(event);
+            }}
+            onOpenGallery={(event) => {
+              setShowAllEvents(false);
+              setGalleryForEvent(event);
+              setGalleryStartIndex(0);
+            }}
+          />
+        )}
+        {/* --- end All Events list --- */}
 
         {showSettings && (
           <SettingsModal
@@ -3767,6 +3807,16 @@ function EventFull() {
               <BookOpen className="w-4 h-4" />
               Journals
             </button>
+            {/* --- All Events list (easy revert) --- */}
+            <button
+              onClick={() => setShowAllEvents(true)}
+              className="border border-gray-300 text-gray-700 px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50"
+              title="View all events as a list"
+            >
+              <List className="w-4 h-4" />
+              Events
+            </button>
+            {/* --- end All Events list --- */}
             <div className="bg-gray-100 rounded-lg p-1 flex gap-1">
               <button 
                 onClick={handleZoomOut}
@@ -4185,6 +4235,30 @@ function EventFull() {
           allCategories={allCategories}
         />
       )}
+
+      {/* --- All Events list (easy revert) --- */}
+      {showAllEvents && (
+        <AllEventsListModal
+          events={events}
+          selectedCategories={selectedCategories}
+          onToggleCategory={toggleCategory}
+          onSelectAll={selectAllCategories}
+          onClose={() => setShowAllEvents(false)}
+          allCategories={allCategories}
+          birthDate={sortedEvents[0]?.date || null}
+          onEditEvent={(event) => {
+            setShowAllEvents(false);
+            setSelectedEvent(event);
+            setEditingEvent(event);
+          }}
+          onOpenGallery={(event) => {
+            setShowAllEvents(false);
+            setGalleryForEvent(event);
+            setGalleryStartIndex(0);
+          }}
+        />
+      )}
+      {/* --- end All Events list --- */}
 
       {/* Background Picker */}
       {showBackgroundPicker && (
