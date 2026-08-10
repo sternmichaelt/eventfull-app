@@ -4,6 +4,7 @@ import { fetchEvents, createEvent, updateEvent, deleteEvent, fetchTimelines, cre
 import { testConnection } from './utils/testSupabaseConnection';
 import { useAuth } from './contexts/AuthContext';
 import AuthModal from './components/AuthModal';
+import ResetPasswordModal from './components/ResetPasswordModal';
 import PhotoSortReview from './components/PhotoSortReview';
 import { classifyPhotos } from './ai/PhotoClassifier';
 // --- All Events list (easy revert) ---
@@ -3147,7 +3148,7 @@ function TimelineModal({ timelines, currentTimelineId, onClose, onSelectTimeline
 }
 
 function EventFull() {
-  const { user, loading: authLoading, signOut } = useAuth();
+  const { user, loading: authLoading, signOut, passwordRecovery } = useAuth();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [selectedEvent, setSelectedEvent] = useState(null);
@@ -3551,6 +3552,15 @@ function EventFull() {
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading...</p>
         </div>
+      </div>
+    );
+  }
+
+  // After clicking the email reset link, require a new password before using the app
+  if (passwordRecovery) {
+    return (
+      <div className="w-full h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <ResetPasswordModal />
       </div>
     );
   }
