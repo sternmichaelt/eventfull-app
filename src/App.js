@@ -3601,24 +3601,30 @@ function EventFull() {
   const startYear = firstEvent?.date?.getFullYear() || new Date().getFullYear();
   const endYear = lastEvent?.date?.getFullYear() || new Date().getFullYear();
   const totalYears = endYear - startYear + 1;
+  const timelineContentWidth = Math.max(1400, totalYears * 120 * zoom);
+  // Extra side room so cards at the ends can hang past the axis instead of bunching
+  const timelineSidePad = Math.max(220, Math.ceil(160 * zoom + 48));
 
   // Calculate event position on timeline
   const getEventPosition = (event) => {
     const eventYear = event.date.getFullYear();
     const eventMonth = event.date.getMonth();
     const yearProgress = (eventYear - startYear + eventMonth / 12) / totalYears;
-    const timelineWidth = Math.max(1400, totalYears * 120 * zoom) - 400; // Account for padding
-    return 200 + (yearProgress * timelineWidth); // Return pixel position instead of percentage
+    const timelineWidth = timelineContentWidth - timelineSidePad * 2;
+    return timelineSidePad + (yearProgress * timelineWidth);
   };
 
-  // Collision-aware card placement: prefer alternating sides, then stack into lanes
+  // Collision-aware card placement: prefer alternating sides, then stack into lanes.
+  // Near the ends, shift cards into the overhang past the axis before stacking higher.
   const getEventCardLayouts = () => {
     const cardWidth = 320 * zoom;
-    // Below needs extra clearance so cards don't cover year labels under the line
     const cardGapAbove = 48 * zoom;
     const cardGapBelow = 88 * zoom;
     const horizontalPad = 12 * zoom;
-    const laneStride = 316 * zoom; // room for a photo card + gap between stacked rows
+    const laneStride = 316 * zoom;
+    const half = cardWidth / 2;
+    const minCenter = half + 12;
+    const maxCenter = timelineContentWidth - half - 12;
 
     const occupied = { above: [], below: [] };
     const byId = {};
@@ -3637,7 +3643,6 @@ function EventFull() {
       return lane;
     };
 
-    // Place chronologically left-to-right so nearby dates resolve first
     const ordered = filteredEvents
       .map((event, index) => ({ event, index, x: getEventPosition(event) }))
       .sort((a, b) => a.x - b.x || a.index - b.index);
@@ -3646,19 +3651,44 @@ function EventFull() {
     let maxLaneBelow = 0;
 
     ordered.forEach(({ event, index, x }, orderIdx) => {
-      const half = cardWidth / 2;
-      const left = x - half;
-      const right = x + half;
       const preferredSide = orderIdx % 2 === 0 ? 'above' : 'below';
       const otherSide = preferredSide === 'above' ? 'below' : 'above';
+      const t =
+        (x - timelineSidePad) /
+        Math.max(1, timelineContentWidth - timelineSidePad * 2);
+      const roomLeft = Math.max(0, x - minCenter);
+      const roomRight = Math.max(0, maxCenter - x);
+      const maxShift = cardWidth * 0.65;
+      // Prefer shifting outward past the timeline ends when crowded
+      const outward = t < 0.5
+        ? -Math.min(maxShift, roomLeft)
+        : Math.min(maxShift, roomRight);
+      const inward = t < 0.5
+        ? Math.min(maxShift, roomRight)
+        : -Math.min(maxShift, roomLeft);
 
-      const preferredLane = firstFreeLane(preferredSide, left, right);
-      const otherLane = firstFreeLane(otherSide, left, right);
+      const offsetsToTry = [0, outward, outward * 0.5, inward * 0.5, inward]
+        .map((v) => Math.round(v))
+        .filter((v, i, arr) => arr.indexOf(v) === i);
 
-      // Prefer closer-to-timeline side; keep alternating when lanes are equal
-      const usePreferred = preferredLane <= otherLane;
-      const side = usePreferred ? preferredSide : otherSide;
-      const lane = usePreferred ? preferredLane : otherLane;
+      let best = null;
+      offsetsToTry.forEach((dx) => {
+        const cx = Math.min(maxCenter, Math.max(minCenter, x + dx));
+        const actualDx = cx - x;
+        const left = cx - half;
+        const right = cx + half;
+        const preferredLane = firstFreeLane(preferredSide, left, right);
+        const otherLane = firstFreeLane(otherSide, left, right);
+        const usePreferred = preferredLane <= otherLane;
+        const side = usePreferred ? preferredSide : otherSide;
+        const lane = usePreferred ? preferredLane : otherLane;
+        const score = lane * 1000 + (usePreferred ? 0 : 50) + Math.abs(actualDx);
+        if (!best || score < best.score) {
+          best = { side, lane, left, right, shiftX: actualDx, score };
+        }
+      });
+
+      const { side, lane, left, right, shiftX } = best;
       const baseGap = side === 'above' ? cardGapAbove : cardGapBelow;
       const offset = baseGap + lane * laneStride;
 
@@ -3670,7 +3700,8 @@ function EventFull() {
         isAbove: side === 'above',
         lane,
         offset,
-        cardWidth
+        cardWidth,
+        shiftX
       };
     });
 
@@ -3943,20 +3974,20 @@ function EventFull() {
           <div 
             className="relative flex items-center"
             style={{ 
-              width: `${Math.max(1400, totalYears * 120 * zoom)}px`,
+              width: `${timelineContentWidth}px`,
               height: `${eventCardLayout.contentHeight}px`,
               paddingTop: '100px',
               paddingBottom: '150px',
-              paddingLeft: '200px',
-              paddingRight: '200px'
+              paddingLeft: `${timelineSidePad}px`,
+              paddingRight: `${timelineSidePad}px`
             }}
           >
             {/* Main Timeline Line */}
             <div 
               className="absolute top-1/2 transform -translate-y-1/2 h-1 bg-gradient-to-r from-blue-400 to-purple-400 rounded-full shadow-sm" 
               style={{
-                left: '200px',
-                right: '200px'
+                left: `${timelineSidePad}px`,
+                right: `${timelineSidePad}px`
               }}
             />
 
@@ -3964,8 +3995,8 @@ function EventFull() {
             {Array.from({ length: totalYears + 1 }, (_, i) => {
               const year = startYear + i;
               const position = (i / totalYears) * 100;
-              const timelineWidth = Math.max(1400, totalYears * 120 * zoom) - 400; // Account for padding
-              const markerPositionPx = 200 + (position / 100) * timelineWidth; // Offset by left padding
+              const timelineWidth = timelineContentWidth - timelineSidePad * 2;
+              const markerPositionPx = timelineSidePad + (position / 100) * timelineWidth;
               
               // Scale year label size with zoom (base 12px at zoom=1)
               const basePx = 12;
@@ -4000,15 +4031,7 @@ function EventFull() {
               const age = getAgeAtEvent(event.date);
               const cardGap = layout.offset;
               const cardWidth = layout.cardWidth;
-              const timelineWidth = Math.max(1400, totalYears * 120 * zoom);
-              const cardHalfWidth = cardWidth / 2;
-
-              let horizontalClass = 'left-1/2 -translate-x-1/2';
-              if (position - cardHalfWidth < 250) {
-                horizontalClass = 'left-0';
-              } else if (position + cardHalfWidth > timelineWidth - 250) {
-                horizontalClass = 'right-0';
-              }
+              const shiftX = layout.shiftX || 0;
 
               const cardOffsetStyle = isAbove
                 ? { bottom: `${cardGap}px` }
@@ -4046,15 +4069,16 @@ function EventFull() {
                     {(event.image || (event.taggedPhotos && event.taggedPhotos.length > 0)) ? <Camera style={{ width: `${3 * zoom}px`, height: `${3 * zoom}px` }} /> : getCategoryIcon(event.category, 3 * zoom)}
                   </div>
                   
-                  {/* Event Card */}
+                  {/* Event Card — may shift past timeline ends to avoid bunching */}
                   <div 
-                    className={`absolute ${horizontalClass} ${selectedEvent?.id === event.id ? 'z-50' : 'z-30'}`}
+                    className={`absolute left-1/2 ${selectedEvent?.id === event.id ? 'z-50' : 'z-30'}`}
                     style={{
                       ...cardOffsetStyle,
-                      width: `${320 * zoom}px`,
+                      width: `${cardWidth}px`,
                       maxHeight: `${380 * zoom}px`,
                       overflowY: 'auto',
-                      fontSize: `${zoom}em`
+                      fontSize: `${zoom}em`,
+                      transform: `translateX(calc(-50% + ${shiftX}px))`
                     }}
                   >
                     <div className={`bg-white rounded-lg shadow-lg border-2 border-gray-300 overflow-hidden transition-all duration-200 ${
