@@ -4438,20 +4438,11 @@ function EventFull() {
                         >
                           {formatDate(event.date)}
                         </p>
-                        
-                        {event.description && (
-                          <p 
-                            className="text-gray-700 leading-relaxed mb-3"
-                            style={{ fontSize: `${14 * zoom}px` }}
-                          >
-                            {event.description}
-                          </p>
-                        )}
-                        
+
                         {/* Importance + category tags (up to 4) */}
                         <div className="flex justify-between items-end gap-2">
                           <div className="flex items-center gap-1 shrink-0">
-                            <span 
+                            <span
                               className="text-gray-500"
                               style={{ fontSize: `${12 * zoom}px` }}
                             >
