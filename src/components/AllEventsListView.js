@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Camera, Search } from 'lucide-react';
 
 function formatDate(date) {
@@ -50,7 +50,6 @@ function AllEventsListView({
   birthDate = null,
 }) {
   const [search, setSearch] = useState('');
-  const scrollRef = useRef(null);
 
   const categoryKeys = Object.keys(allCategories);
 
@@ -60,9 +59,12 @@ function AllEventsListView({
       .filter((e) => selectedCategories.has(e.category))
       .filter((e) => {
         if (!q) return true;
+        const d = e.date instanceof Date ? e.date : new Date(e.date);
+        const yearStr = Number.isNaN(d.getTime()) ? '' : String(d.getFullYear());
         return (
           (e.title || '').toLowerCase().includes(q) ||
-          (e.description || '').toLowerCase().includes(q)
+          (e.description || '').toLowerCase().includes(q) ||
+          yearStr.includes(q)
         );
       })
       .sort((a, b) => {
@@ -89,20 +91,11 @@ function AllEventsListView({
     return groups;
   }, [sortedFiltered]);
 
-  const years = yearGroups.map((g) => g.year);
-
-  const jumpToYear = (year) => {
-    const el = document.getElementById(`events-year-${year}`);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  };
-
   const categoryFilteredCount = events.filter((e) => selectedCategories.has(e.category)).length;
 
   return (
     <div className="h-full flex flex-col bg-white/90 backdrop-blur-sm">
-      <div className="px-4 md:px-6 py-3 border-b shrink-0 space-y-3 bg-white/95">
+      <div className="px-4 md:px-6 py-3 border-b shrink-0 bg-white/95">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm text-gray-500 mr-1">
             {sortedFiltered.length} of {categoryFilteredCount} shown
@@ -138,29 +131,14 @@ function AllEventsListView({
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 pr-3 py-2 border rounded text-sm w-56 md:w-72"
-              placeholder="Search title or description..."
+              className="pl-9 pr-3 py-2 border rounded text-sm w-56 md:w-80"
+              placeholder="Search title, description, or year"
             />
           </div>
         </div>
-
-        {years.length > 1 && (
-          <div className="flex flex-wrap gap-1.5">
-            {years.map((year) => (
-              <button
-                key={year}
-                type="button"
-                onClick={() => jumpToYear(year)}
-                className="px-2.5 py-1 text-xs font-medium rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
-              >
-                {year}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
 
-      <div ref={scrollRef} className="flex-1 overflow-auto min-h-0">
+      <div className="flex-1 overflow-auto min-h-0">
         {sortedFiltered.length === 0 ? (
           <div className="p-8 text-center text-sm text-gray-600">
             {events.length === 0
