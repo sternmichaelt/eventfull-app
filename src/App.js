@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, ZoomIn, ZoomOut, Calendar, Heart, GraduationCap, Briefcase, Baby, Star, X, Camera, ChevronLeft, ChevronRight, Images, BookOpen, Settings, ChevronDown, LogOut, Sparkles, List } from 'lucide-react';
+import { Plus, ZoomIn, ZoomOut, Calendar, Heart, GraduationCap, Briefcase, Baby, Star, X, Camera, ChevronLeft, ChevronRight, Images, BookOpen, Settings, ChevronDown, LogOut, Sparkles, List, Play } from 'lucide-react';
 import { fetchEvents, createEvent, updateEvent, deleteEvent, fetchTimelines, createTimeline, updateTimeline, deleteTimeline, shareTimeline, fetchSharedTimelines, fetchUserSettings, updateUserSettings, fetchPhotos, uploadPhotoFile, updatePhoto, deletePhoto, tagPhotoToEvent, untagPhotoFromEvent, getPhotosForEvent, migrateLegacyPhotosToStorage, ALLOWED_PHOTO_TYPES } from './api/events';
 import { testConnection } from './utils/testSupabaseConnection';
 import { useAuth } from './contexts/AuthContext';
@@ -1063,13 +1063,65 @@ const categoryConfig = {
   untagged: { color: 'bg-gray-500', icon: Images, label: 'Untagged' }
 };
 
+function PhotoSlideshow({ photos, startIndex = 0, onClose, title }) {
+  const gallery = photos || [];
+  const [index, setIndex] = useState(() =>
+    gallery.length === 0 ? 0 : Math.min(Math.max(0, startIndex), gallery.length - 1)
+  );
+
+  useEffect(() => {
+    if (gallery.length === 0) return undefined;
+    const timer = setInterval(() => {
+      setIndex((i) => (i + 1) % gallery.length);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [gallery.length]);
+
+  useEffect(() => {
+    const onKey = () => onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  if (gallery.length === 0) {
+    return (
+      <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/90">
+        <div className="bg-white/95 rounded-xl shadow-xl px-8 py-6 text-center">
+          <p className="text-slate-600 mb-4">No photos to show</p>
+          <button type="button" onClick={onClose} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const current = gallery[index];
+
+  return (
+    <div className="fixed inset-0 z-[80] flex flex-col bg-black">
+      <div className="flex-1 flex items-center justify-center min-h-0 p-4">
+        <img
+          src={current.url}
+          alt={current.name || title || 'Slideshow photo'}
+          className="max-h-full max-w-full object-contain"
+        />
+      </div>
+      <p className="absolute bottom-6 left-0 right-0 text-center text-white/50 text-sm pointer-events-none">
+        Press any key to exit
+      </p>
+    </div>
+  );
+}
+
 function ImmersivePhotoViewer({
   photos,
   index,
   onIndexChange,
   onClose,
   title,
-  primaryPhotoId = null
+  primaryPhotoId = null,
+  onStartSlideshow = null
 }) {
   const gallery = photos || [];
   const safeIndex = gallery.length === 0 ? 0 : Math.min(Math.max(0, index), gallery.length - 1);
@@ -1125,14 +1177,27 @@ function ImmersivePhotoViewer({
             {current?.name ? ` · ${current.name}` : ''}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="ml-3 p-2 rounded-full bg-white/15 hover:bg-white/25 transition-colors"
-          aria-label="Close"
-        >
-          <X className="w-5 h-5" />
-        </button>
+        <div className="flex items-center gap-2 ml-3 shrink-0">
+          {onStartSlideshow && (
+            <button
+              type="button"
+              onClick={() => onStartSlideshow(safeIndex)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 hover:bg-white/25 transition-colors text-sm"
+              aria-label="Start slideshow"
+            >
+              <Play className="w-4 h-4" />
+              Slideshow
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-full bg-white/15 hover:bg-white/25 transition-colors"
+            aria-label="Close"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 flex items-center min-h-0 px-2 sm:px-4 pb-2" onClick={(e) => e.stopPropagation()}>
@@ -1199,6 +1264,7 @@ function EventGallery({ event, startIndex = 0, onClose }) {
   const [index, setIndex] = useState(startIndex);
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [slideshowStart, setSlideshowStart] = useState(null);
 
   useEffect(() => {
     const loadPhotos = async () => {
@@ -1247,14 +1313,25 @@ function EventGallery({ event, startIndex = 0, onClose }) {
   }
 
   return (
-    <ImmersivePhotoViewer
-      photos={photos}
-      index={index}
-      onIndexChange={setIndex}
-      onClose={onClose}
-      title={event.title}
-      primaryPhotoId={event.primary_photo_id}
-    />
+    <>
+      <ImmersivePhotoViewer
+        photos={photos}
+        index={index}
+        onIndexChange={setIndex}
+        onClose={onClose}
+        title={event.title}
+        primaryPhotoId={event.primary_photo_id}
+        onStartSlideshow={photos.length > 0 ? (i) => setSlideshowStart(i) : null}
+      />
+      {slideshowStart !== null && (
+        <PhotoSlideshow
+          photos={photos}
+          startIndex={slideshowStart}
+          title={event.title}
+          onClose={() => setSlideshowStart(null)}
+        />
+      )}
+    </>
   );
 }
 
@@ -1279,6 +1356,7 @@ function PhotoLibraryModal({
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [viewerIndex, setViewerIndex] = useState(null);
+  const [slideshowStart, setSlideshowStart] = useState(null);
   const [sortSelectMode, setSortSelectMode] = useState(false);
   const [sortSelectedIds, setSortSelectedIds] = useState(() => new Set());
   const [librarySelectedIds, setLibrarySelectedIds] = useState(() => new Set());
@@ -1516,6 +1594,16 @@ function PhotoLibraryModal({
                 <button
                   type="button"
                   disabled={sorting || loading || filteredPhotos.length === 0}
+                  onClick={() => setSlideshowStart(0)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  title="Play slideshow of filtered photos"
+                >
+                  <Play className="w-4 h-4" />
+                  Slideshow
+                </button>
+                <button
+                  type="button"
+                  disabled={sorting || loading || filteredPhotos.length === 0}
                   onClick={runAiSort}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-slate-800 text-white hover:bg-slate-900 disabled:opacity-50"
                   title="Group photos into events with Claude"
@@ -1742,6 +1830,16 @@ function PhotoLibraryModal({
           onIndexChange={setViewerIndex}
           onClose={() => setViewerIndex(null)}
           title="Photo Library"
+          onStartSlideshow={filteredPhotos.length > 0 ? (i) => setSlideshowStart(i) : null}
+        />
+      )}
+
+      {slideshowStart !== null && (
+        <PhotoSlideshow
+          photos={filteredPhotos}
+          startIndex={slideshowStart}
+          title="Photo Library"
+          onClose={() => setSlideshowStart(null)}
         />
       )}
 
