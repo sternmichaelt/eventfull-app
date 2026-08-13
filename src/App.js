@@ -1063,11 +1063,44 @@ const categoryConfig = {
   untagged: { color: 'bg-gray-500', icon: Images, label: 'Untagged' }
 };
 
+function requestBrowserFullscreen() {
+  const el = document.documentElement;
+  const req = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (!req) return;
+  try {
+    const result = req.call(el);
+    if (result && typeof result.catch === 'function') result.catch(() => {});
+  } catch (_) {
+    /* ignore — overlay still works */
+  }
+}
+
+function exitBrowserFullscreen() {
+  const doc = document;
+  if (!doc.fullscreenElement && !doc.webkitFullscreenElement) return;
+  const exit = doc.exitFullscreen || doc.webkitExitFullscreen;
+  if (!exit) return;
+  try {
+    const result = exit.call(doc);
+    if (result && typeof result.catch === 'function') result.catch(() => {});
+  } catch (_) {
+    /* ignore */
+  }
+}
+
 function PhotoSlideshow({ photos, startIndex = 0, onClose, title }) {
   const gallery = photos || [];
   const [index, setIndex] = useState(() =>
     gallery.length === 0 ? 0 : Math.min(Math.max(0, startIndex), gallery.length - 1)
   );
+  const closingRef = useRef(false);
+
+  const handleClose = () => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    exitBrowserFullscreen();
+    onClose();
+  };
 
   useEffect(() => {
     if (gallery.length === 0) return undefined;
@@ -1078,9 +1111,28 @@ function PhotoSlideshow({ photos, startIndex = 0, onClose, title }) {
   }, [gallery.length]);
 
   useEffect(() => {
-    const onKey = () => onClose();
+    const onKey = () => handleClose();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onClose]);
+
+  useEffect(() => {
+    const onFsChange = () => {
+      if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+        if (!closingRef.current) {
+          closingRef.current = true;
+          onClose();
+        }
+      }
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    document.addEventListener('webkitfullscreenchange', onFsChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFsChange);
+      document.removeEventListener('webkitfullscreenchange', onFsChange);
+      exitBrowserFullscreen();
+    };
   }, [onClose]);
 
   if (gallery.length === 0) {
@@ -1088,7 +1140,7 @@ function PhotoSlideshow({ photos, startIndex = 0, onClose, title }) {
       <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/90">
         <div className="bg-white/95 rounded-xl shadow-xl px-8 py-6 text-center">
           <p className="text-slate-600 mb-4">No photos to show</p>
-          <button type="button" onClick={onClose} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+          <button type="button" onClick={handleClose} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
             Close
           </button>
         </div>
@@ -1181,7 +1233,10 @@ function ImmersivePhotoViewer({
           {onStartSlideshow && (
             <button
               type="button"
-              onClick={() => onStartSlideshow(safeIndex)}
+              onClick={() => {
+                requestBrowserFullscreen();
+                onStartSlideshow(safeIndex);
+              }}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/15 hover:bg-white/25 transition-colors text-sm"
               aria-label="Start slideshow"
             >
@@ -1594,7 +1649,10 @@ function PhotoLibraryModal({
                 <button
                   type="button"
                   disabled={sorting || loading || filteredPhotos.length === 0}
-                  onClick={() => setSlideshowStart(0)}
+                  onClick={() => {
+                    requestBrowserFullscreen();
+                    setSlideshowStart(0);
+                  }}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                   title="Play slideshow of filtered photos"
                 >
