@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Camera, Search } from 'lucide-react';
+import { ArrowDownWideNarrow, ArrowUpWideNarrow, Camera, Search } from 'lucide-react';
 
 function formatDate(date) {
   if (!date) return '';
@@ -50,6 +50,7 @@ function AllEventsListView({
   birthDate = null,
 }) {
   const [search, setSearch] = useState('');
+  const [dateSort, setDateSort] = useState('asc'); // asc = oldest first, desc = newest first
 
   const categoryKeys = Object.keys(allCategories);
 
@@ -70,9 +71,11 @@ function AllEventsListView({
       .sort((a, b) => {
         const da = a.date instanceof Date ? a.date.getTime() : new Date(a.date).getTime();
         const db = b.date instanceof Date ? b.date.getTime() : new Date(b.date).getTime();
-        return da - db;
+        const aTime = Number.isNaN(da) ? 0 : da;
+        const bTime = Number.isNaN(db) ? 0 : db;
+        return dateSort === 'asc' ? aTime - bTime : bTime - aTime;
       });
-  }, [events, selectedCategories, search]);
+  }, [events, selectedCategories, search, dateSort]);
 
   const yearGroups = useMemo(() => {
     const groups = [];
@@ -125,15 +128,30 @@ function AllEventsListView({
               </button>
             );
           })}
-          <div className="ml-auto relative flex items-center">
-            <Search className="w-4 h-4 text-gray-400 absolute left-3 pointer-events-none" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 pr-3 py-2 border rounded text-sm w-56 md:w-80"
-              placeholder="Search title, description, or year"
-            />
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setDateSort((v) => (v === 'asc' ? 'desc' : 'asc'))}
+              className="inline-flex items-center gap-1.5 px-3 py-2 border rounded text-sm text-gray-700 bg-white hover:bg-gray-50"
+              title={dateSort === 'asc' ? 'Showing oldest first — click for newest first' : 'Showing newest first — click for oldest first'}
+            >
+              {dateSort === 'asc' ? (
+                <ArrowUpWideNarrow className="w-4 h-4 text-gray-500" />
+              ) : (
+                <ArrowDownWideNarrow className="w-4 h-4 text-gray-500" />
+              )}
+              {dateSort === 'asc' ? 'Oldest first' : 'Newest first'}
+            </button>
+            <div className="relative flex items-center">
+              <Search className="w-4 h-4 text-gray-400 absolute left-3 pointer-events-none" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 pr-3 py-2 border rounded text-sm w-56 md:w-80"
+                placeholder="Search title, description, or year"
+              />
+            </div>
           </div>
         </div>
       </div>
